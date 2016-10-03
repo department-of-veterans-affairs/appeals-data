@@ -2,5 +2,5 @@
 EventCaseExclusions <- paste(c(
   "BFKEY <> '2222222'", # omit dummy data - Joe Snuffy
   "BFKEY <> '3082477'", # omit dummy data - Jed Wagner
-  "BFMPRO <> 'M'" # omit merged cases
+  "BFDC <> 'M'" # omit merged cases
 ), collapse = " and ")
