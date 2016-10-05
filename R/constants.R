@@ -11,7 +11,17 @@ EventHearingExclusions <- paste(c(
   "HEARING_TYPE <> 'F'" # omit RO formal hearings
 ), collapse = " and ")
 
+#' Dataframe for classifying the final disposition of a case.
 EventEndStateClassifier <- data.frame(
-  BFDC       = c('1',        '3',      '4',        '6',         '8',         '9',         'A',         'B',         'E',         'F',         'G',         'W'),
-  EVENT_TYPE = c('DISPATCH', 'REMAND', 'DISPATCH', 'DISMISSED', 'DISMISSED', 'WITHDRAWN', 'AOJ_GRANT', 'AOJ_GRANT', 'WITHDRAWN', 'WITHDRAWN', 'WITHDRAWN', 'WITHDRAWN')
+  BFDC       = c('1',        '3',      '4',        '5',       '6',         '8',         '9',         'A',         'B',         'E',         'F',         'G',         'W'),
+  EVENT_TYPE = c('DISPATCH', 'REMAND', 'DISPATCH', 'VACATED', 'DISMISSED', 'DISMISSED', 'WITHDRAWN', 'AOJ_GRANT', 'AOJ_GRANT', 'WITHDRAWN', 'WITHDRAWN', 'WITHDRAWN', 'WITHDRAWN')
 )
+
+#' PRIORLOC locations.
+AbeyanceLocs       <- "24|39"
+DecisionLocs       <- "D[1-5]"
+DispatchLocs       <- "A.+|SUP|OPR"
+CentralDispatchLoc <- "30"
+OMORequestLoc      <- "20"
+OutsideBVALoc      <- "92"
+VSOLoc             <- "55"

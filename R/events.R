@@ -88,65 +88,158 @@ event_getPriorLocs <- function(con, where) {
 }
 
 
-#' Parse a location log to extract assignment (ASSIGNMENT) and decision (DECISION) events.
+#' Parse a location log to extract Service Organization (TO_VSO and FROM_VSO) events.
 #'
-#' @param loclog A complete stream of events (heuristic requires inclusion of non-pertinent events)
+#' @param loclog A stream of events
 #' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseDecisionLocs <- function(loclog) {
+event_parseVSOLocs <- function(loclog) {
+  source("R/constants.R")
+
+  require("magrittr")
+  require("dplyr")
+
+  loclog %<>%
+    arrange(BFCORLID, APPEAL_DATE, LOCDOUT) %>%
+    mutate(LOC_PLUS1 = ifelse(
+      loclog$BFCORLID == c(tail(loclog$BFCORLID, -1), rep(NA, 1)) &
+        loclog$APPEAL_DATE == c(tail(loclog$APPEAL_DATE, -1), rep(NA, 1)),
+      c(tail(loclog$LOC, -1), rep(NA, 1)), NA
+    ))
+
+  toVSO <- loclog %>%
+    filter(
+      LOC != VSOLoc,
+      LOC_PLUS1 == VSOLoc
+    ) %>%
+    mutate(EVENT_TYPE = "TO_VSO") %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDIN)
+
+  fromVSO <- loclog %>%
+    filter(
+      LOC == VSOLoc,
+      LOC_PLUS1 != VSOLoc
+    ) %>%
+    mutate(EVENT_TYPE = "FROM_VSO") %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDOUT)
+
+  return(rbind(toVSO, fromVSO))
+}
+
+
+#' Parse a location log to extract Abeyance (TO_ABEYANCE and FROM_ABEYANCE) events.
+#'
+#' @param loclog A stream of events
+#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+event_parseAbeyanceLocs <- function(loclog) {
+  source("R/constants.R")
+
+  require("magrittr")
   require("dplyr")
   require("tidyr")
 
-  loclog <- arrange(loclog, BFCORLID, APPEAL_DATE, LOCDOUT)
+  loclog %>%
+    filter(grepl(AbeyanceLocs, LOC)) %>%
+    mutate(TO_ABEYANCE = LOCDOUT, FROM_ABEYANCE = LOCDIN) %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, TO_ABEYANCE, FROM_ABEYANCE) %>%
+    gather(EVENT_TYPE, DATE, -BFCORLID, -APPEAL_DATE, -BFKEY) %>%
+    return
+}
 
-  dispatchLocs <- "A.+|SUP|OPR"
-  decisionLocs <- "D[1-5]"
-  continueLocs <- paste("24|39|81", dispatchLocs, decisionLocs, sep = "|")
 
-  dispatchIdxs <- sort(grep(dispatchLocs, loclog$LOC, perl = TRUE), decreasing = TRUE)
-  decisionMask <- grepl(decisionLocs, loclog$LOC, perl = TRUE)
-  continueMask <- grepl(continueLocs, loclog$LOC, perl = TRUE)
+#' Parse a location log to extract assignment (ASSIGNMENT) events.
+#'
+#' @param loclog A stream of events
+#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+event_parseAssignmentLocs <- function(loclog) {
+  source("R/constants.R")
 
-  result <- data.frame(
-    BFCORLID = character(),
-    APPEAL_DATE = .POSIXct(character()),
-    BFKEY = character(),
-    ASSIGNMENT = as.POSIXct(character()),
-    DECISION = as.POSIXct(character()),
-    stringsAsFactors = FALSE
-  )
+  require("magrittr")
+  require("dplyr")
 
-  i <- 1
-  while(i <= length(dispatchIdxs)) {
-    start <- dispatchIdxs[i] - 1
+  loclog %<>%
+    arrange(BFCORLID, APPEAL_DATE, LOCDOUT) %>%
+    mutate(LOC_PLUS1 = ifelse(
+      loclog$BFCORLID == c(tail(loclog$BFCORLID, -1), rep(NA, 1)) &
+        loclog$APPEAL_DATE == c(tail(loclog$APPEAL_DATE, -1), rep(NA, 1)),
+      c(tail(loclog$LOC, -1), rep(NA, 1)), NA
+    ))
 
-    if(!decisionMask[start]) {
-      i <- i + 1
-      next
-    }
+  result <- loclog %>%
+    filter(
+      grepl(DecisionLocs, LOC, perl = TRUE),
+      grepl(DecisionLocs, LOC_PLUS1, perl = TRUE)
+    ) %>%
+    group_by(BFKEY) %>%
+    slice(which.min(LOCDOUT)) %>%
+    ungroup() %>%
+    mutate(EVENT_TYPE = "ASSIGNMENT") %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDIN)
 
-    end <- start
-    j <- start
+  return(result)
+}
 
-    while(continueMask[j]) {
-      j <- j - 1
-      if(j == 0) { break }
-      if(decisionMask[j]) { start <- j }
-    }
 
-    bfcorlid <- loclog$BFCORLID[start]
-    appeal_date <- loclog$APPEAL_DATE[start]
-    bfkey <- loclog$BFKEY[start]
-    start_date <- loclog$LOCDOUT[start]
-    end_date <- loclog$LOCDIN[end]
+#' Parse a location log to extract Outside Medical Opinion (TO_OMO and FROM_OMO) events.
+#'
+#' @param loclog A stream of events
+#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+event_parseOMOLocs <- function(loclog) {
+  source("R/constants.R")
 
-    result[nrow(result) + 1,] <- list(bfcorlid, appeal_date, bfkey, start_date, end_date)
+  require("magrittr")
+  require("dplyr")
+  require("tidyr")
 
-    while(i <= length(dispatchIdxs) & dispatchIdxs[i] >= start) {
-      i <- i + 1
-    }
-  }
+  loclog %>%
+    arrange(BFCORLID, APPEAL_DATE, LOCDOUT) %>%
+    mutate(LOC_MINUS1 = ifelse(
+      loclog$BFCORLID == c(rep(NA, 1), head(loclog$BFCORLID, -1)) &
+        loclog$APPEAL_DATE == c(rep(NA, 1), head(loclog$APPEAL_DATE, -1)),
+      c(rep(NA, 1), head(loclog$LOC, -1)), NA
+    )) %>%
+    filter(
+      LOC == OutsideBVALoc,
+      LOC_MINUS1 == OMORequestLoc
+    ) %>%
+    mutate(TO_OMO = LOCDOUT, FROM_OMO = LOCDIN) %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, TO_OMO, FROM_OMO) %>%
+    gather(EVENT_TYPE, DATE, -BFCORLID, -APPEAL_DATE, -BFKEY) %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE) %>%
+    return
+}
 
-  result <- gather(result, EVENT_TYPE, DATE, -BFCORLID, -APPEAL_DATE, -BFKEY)
+
+#' Parse a location log to extract decision (DECISION) events.
+#'
+#' @param loclog A stream of events
+#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+event_parseDecisionLocs <- function(loclog) {
+  source("R/constants.R")
+
+  require("magrittr")
+  require("dplyr")
+
+  loclog %<>%
+    arrange(BFCORLID, APPEAL_DATE, LOCDOUT) %>%
+    mutate(LOC_PLUS1 = ifelse(
+      loclog$BFCORLID == c(tail(loclog$BFCORLID, -1), rep(NA, 1)) &
+        loclog$APPEAL_DATE == c(tail(loclog$APPEAL_DATE, -1), rep(NA, 1)),
+      c(tail(loclog$LOC, -1), rep(NA, 1)), NA
+    )) %>%
+    mutate(LOC_PLUS2 = ifelse(
+      loclog$BFCORLID == c(tail(loclog$BFCORLID, -2), rep(NA, 2)) &
+        loclog$APPEAL_DATE == c(tail(loclog$APPEAL_DATE, -2), rep(NA, 2)),
+      c(tail(loclog$LOC, -2), rep(NA, 2)), NA
+    ))
+
+  result <- loclog %>%
+    filter(
+      grepl(DecisionLocs, LOC, perl = TRUE),
+      grepl(DispatchLocs, LOC_PLUS1, perl = TRUE),
+      LOC_PLUS2 == CentralDispatchLoc
+    ) %>%
+    mutate(EVENT_TYPE = "DECISION") %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDIN)
 
   return(result)
 }
@@ -381,6 +474,25 @@ event_endStates <- function (con, where) {
 }
 
 
+#' Retrieve a log of CAVC Decision (CAVC) events matching the specified criteria.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_cavc(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_cavc <- function (con, where) {
+  require("magrittr")
+  require("dplyr")
+
+  join <- "COVA on BFKEY = CVFOLDER"
+
+  event_getDateCols(con, c("CVDDEC"), c("CAVC"), join = join, where = where) %>%
+    distinct(BFKEY, DATE, .keep_all = TRUE) %>%
+    return
+}
+
+
 #' Retrieve a log of all events matching the specified criteria. Includes:
 #' * Notice of Disagreement (NOD)
 #' * Statement of Case (SOC)
@@ -390,7 +502,10 @@ event_endStates <- function (con, where) {
 #' * Activated at BVA (ACTIVATION)
 #' * Hearing Held (HEARING)
 #' * Transcript Received (TRANSCRIPT)
+#' * Service Organization (TO_VSO and FROM_VSO)
 #' * Assignment (ASSIGNMENT)
+#' * Abeyance (TO_ABEYANCE and FROM_ABEYANCE)
+#' * Outside Medical Opinion (TO_OMO and FROM_OMO)
 #' * Decision (DECISION)
 #' * Quality Review (QR)
 #' * Withdrawn (WITHDRAWN)
@@ -398,6 +513,7 @@ event_endStates <- function (con, where) {
 #' * Remand (REMAND)
 #' * AOJ Grant (AOJGRANT)
 #' * Final Dispatch (DISPATCH)
+#' * CAVC Decision (CAVC)
 #'
 #' Does not include:
 #' * VACOLS Creation (VACOLS)
@@ -429,12 +545,6 @@ event_all <- function (con, where) {
       return(event_getDateCols(con, cols, labs, join = join, where = where))
     })(con, where)) %>%
     rbind(event_ssoc(con, where)) %>%
-    # rbind((function(con, where) {
-    #   cols <- c("")
-    #   labs <- c("")
-    #
-    #   return(event_getDateCols(con, cols, labs, where = where))
-    # })(con, where)) %>%
     rbind((function(con, where) {
       cols <- c("HEARING_DATE", "CONRET")
       labs <- c("HEARING", "TRANSCRIPT")
@@ -452,20 +562,18 @@ event_all <- function (con, where) {
       locs <- event_getPriorLocs(con, where)
 
       activations <- event_parseActivationLocs(locs)
+      vso <- event_parseVSOLocs(locs)
+      assignments <- event_parseAssignmentLocs(locs)
+      abyance <- event_parseAbeyanceLocs(locs)
+      omos <- event_parseOMOLocs(locs)
       decisions <- event_parseDecisionLocs(locs)
       qr <- event_parseQRLocs(locs)
 
-      return(rbind(activations, decisions, qr))
+      return(rbind(activations, vso, assignments, abyance, omos, decisions, qr))
     })(con, where)) %>%
     rbind(event_endStates(con, where)) %>%
+    rbind(event_cavc(con, where)) %>%
     arrange(BFCORLID, APPEAL_DATE, DATE)
-
-  # TODO:
-  # * Translation (loc 14 and 18)
-  # * CAVC
-  # * Service orgs
-  # * OMO
-  # * Abeyance
 
   return(events)
 }
