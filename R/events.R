@@ -444,8 +444,9 @@ event_transcript <- function (con, where) {
 #' Retrieve a log of end state events matching the specified criteria. Includes:
 #' * Withdrawn (WITHDRAWN)
 #' * Dismissed (DISMISSED)
+#' * Vacated (VACATED)
 #' * Remand (REMAND)
-#' * AOJ Grant (AOJGRANT)
+#' * AOJ Grant (AOJ_GRANT)
 #' * Final Dispatch (DISPATCH)
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
@@ -502,7 +503,7 @@ event_cavc <- function (con, where) {
 #' * Activated at BVA (ACTIVATION)
 #' * Hearing Held (HEARING)
 #' * Transcript Received (TRANSCRIPT)
-#' * Service Organization (TO_VSO and FROM_VSO)
+#' * Service Organization Review (TO_VSO and FROM_VSO)
 #' * Assignment (ASSIGNMENT)
 #' * Abeyance (TO_ABEYANCE and FROM_ABEYANCE)
 #' * Outside Medical Opinion (TO_OMO and FROM_OMO)
@@ -511,8 +512,9 @@ event_cavc <- function (con, where) {
 #' * Withdrawn (WITHDRAWN)
 #' * Dismissed (DISMISSED)
 #' * Remand (REMAND)
-#' * AOJ Grant (AOJGRANT)
+#' * AOJ Grant (AOJ_GRANT)
 #' * Final Dispatch (DISPATCH)
+#' * Vacated (VACATED)
 #' * CAVC Decision (CAVC)
 #'
 #' Does not include:
