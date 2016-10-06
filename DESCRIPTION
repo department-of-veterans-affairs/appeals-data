@@ -2,13 +2,16 @@ Package: vacols
 Title: VACOLS
 Version: 0.0.1
 Authors@R: person("Chris", "Given", email = "christopher.given@va.gov", role = c("aut", "cre"))
-Description: Scripts for the analysis of the Department of Veterans Affairs' VACOLS database
-Depends: R (>= 3.3.1)
+Description: Scripts for the analysis of the Department of Veterans Affairs'
+    VACOLS database
+Depends:
+    R (>= 3.3.1)
 License: Public Domain/CC0
 Encoding: UTF-8
 LazyData: true
 Imports:
-	ROracle,
+    ROracle,
     magrittr,
     dplyr,
     tidyr
+RoxygenNote: 5.0.1

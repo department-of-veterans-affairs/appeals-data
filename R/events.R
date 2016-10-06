@@ -1,11 +1,17 @@
+####################################
+####### VACOLS QUERY HELPERS #######
+####################################
+
 #' Retrieve a log of events that appear in VACOLS as date columns.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param cols Vector of column names to include in results.
-#' @param labs (optional) Vector of labels to be used for the \code{EVENT_TYPE} variable.
+#' @param labs (optional) Vector of labels to be used for the \code{EVENT_TYPE}
+#'   variable.
 #' @param join (optional) SQL statement to join a table other than BRIEFF.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #'
 #' @examples
 #' cols <- c("BFNOD", "BFDSOC", "BFD19")
@@ -46,12 +52,14 @@ event_getDateCols <- function(con, cols, labs, join, where) {
 }
 
 
-#' Retrieve a log of locations from the VACOLS PRIORLOC table.
+#' Retrieve a log of events from the VACOLS PRIORLOC table.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{LOCDOUT}, \code{LOCDIN},
-#' \code{LOCSTTO}, \code{LOCSTOUT}, \code{LOCSTRCV}, \code{LOC} and \code{LOC_NAME}.#'
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{LOCDOUT}, \code{LOCDIN},
+#'   \code{LOCSTTO}, \code{LOCSTOUT}, \code{LOCSTRCV}, \code{LOC} and
+#'   \code{LOC_NAME}.#'
 #' @examples
 #' event_getPriorLocs(con, "LOCSTTO = '48' and LOCSTOUT > date '2015-01-01' and LOCSTOUT < date '2015-12-31'")
 event_getPriorLocs <- function(con, where) {
@@ -88,11 +96,11 @@ event_getPriorLocs <- function(con, where) {
 }
 
 
-#' Parse a location log to extract Service Organization (TO_VSO and FROM_VSO) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseVSOLocs <- function(loclog) {
+######################################
+####### PRIOR LOCATION PARSING #######
+######################################
+
+.parseVSOLocs <- function(loclog) {
   source("R/constants.R")
 
   require("magrittr")
@@ -126,11 +134,7 @@ event_parseVSOLocs <- function(loclog) {
 }
 
 
-#' Parse a location log to extract Abeyance (TO_ABEYANCE and FROM_ABEYANCE) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseAbeyanceLocs <- function(loclog) {
+.parseAbeyanceLocs <- function(loclog) {
   source("R/constants.R")
 
   require("magrittr")
@@ -146,11 +150,7 @@ event_parseAbeyanceLocs <- function(loclog) {
 }
 
 
-#' Parse a location log to extract assignment (ASSIGNMENT) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseAssignmentLocs <- function(loclog) {
+.parseAssignmentLocs <- function(loclog) {
   source("R/constants.R")
 
   require("magrittr")
@@ -179,11 +179,7 @@ event_parseAssignmentLocs <- function(loclog) {
 }
 
 
-#' Parse a location log to extract Outside Medical Opinion (TO_OMO and FROM_OMO) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseOMOLocs <- function(loclog) {
+.parseOMOLocs <- function(loclog) {
   source("R/constants.R")
 
   require("magrittr")
@@ -209,11 +205,7 @@ event_parseOMOLocs <- function(loclog) {
 }
 
 
-#' Parse a location log to extract decision (DECISION) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseDecisionLocs <- function(loclog) {
+.parseDecisionLocs <- function(loclog) {
   source("R/constants.R")
 
   require("magrittr")
@@ -245,43 +237,49 @@ event_parseDecisionLocs <- function(loclog) {
 }
 
 
-#' Parse a location log to extract Quality Review (QR) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseQRLocs <- function(loclog) {
+.parseQRLocs <- function(loclog) {
+  source("R/constants.R")
+
   require("magrittr")
   require("dplyr")
 
   loclog %>%
-    filter(LOC == '48') %>%
+    filter(LOC == QRLoc) %>%
     mutate(EVENT_TYPE = "QR") %>%
     select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDIN) %>%
     return
 }
 
 
-#' Parse a location log to extract Activated at BVA (ACTIVATION) events.
-#'
-#' @param loclog A stream of events
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
-event_parseActivationLocs <- function(loclog) {
+.parseActivationLocs <- function(loclog) {
+  source("R/constants.R")
+
   require("magrittr")
   require("dplyr")
 
   loclog %>%
-    filter(LOC == '01') %>%
+    filter(LOC == ActivationLoc) %>%
     mutate(EVENT_TYPE = "ACTIVATION") %>%
     select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDOUT) %>%
     return
 }
 
 
-#' Retrieve a log of Notice of Disagreement (NOD) dates matching the specified criteria.
+##################################
+####### GET EVENTS OF TYPE #######
+##################################
+
+#' Retrieve a log of Notice of Disagreement (NOD) dates matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the BFDNOD column, limited to
+#'   appeals where the Type Action (BFAC) indicates that it is the original
+#'   action (1). Merged appeals and dummy data are also excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_nod(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_nod <- function (con, where) {
@@ -294,11 +292,16 @@ event_nod <- function (con, where) {
 }
 
 
-#' Retrieve a log of VACOLS Creation (VACOLS) events matching the specified criteria.
+#' Retrieve a log of VACOLS Creation (VACOLS) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the minimum LOCDOUT timestamp from the PRIORLOC
+#'   table. Merged appeals and dummy data are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_vacolsCreation(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_vacolsCreation <- function (con, where) {
@@ -308,11 +311,17 @@ event_vacolsCreation <- function (con, where) {
 }
 
 
-#' Retrieve a log of Statement of Case (SOC) events matching the specified criteria.
+#' Retrieve a log of Statement of Case (SOC) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the BFDSOC column, limited to
+#'   appeals where the Type Action (BFAC) indicates that it is the original
+#'   action (1). Merged appeals and dummy data are also excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_soc(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_soc <- function (con, where) {
@@ -327,9 +336,14 @@ event_soc <- function (con, where) {
 
 #' Retrieve a log of Form 9 (FORM9) events matching the specified criteria.
 #'
+#' @section Methodology: Uses the date from the BFD19 column, limited to appeals
+#'   where the Type Action (BFAC) indicates that it is the original action (1).
+#'   Merged appeals and dummy data are also excluded.
+#'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_form9(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_form9 <- function (con, where) {
@@ -342,11 +356,17 @@ event_form9 <- function (con, where) {
 }
 
 
-#' Retrieve a log of Supplemental Statement of Case (SSOC) events matching the specified criteria.
+#' Retrieve a log of Supplemental Statement of Case (SSOC) events matching the
+#' specified criteria.
+#'
+#' @section Methodology: Uses the dates from the BFSSOC1, BFSSOC2, BFSSOC3,
+#'   BFSSOC4, and BFSSOC5 columns from any appeal, uniqued by the BFCORLID.
+#'   Merged appeals and dummy data are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_ssoc(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_ssoc <- function (con, where) {
@@ -363,11 +383,17 @@ event_ssoc <- function (con, where) {
 }
 
 
-#' Retrieve a log of Certification to BVA (CERTIFICATION) events matching the specified criteria.
+#' Retrieve a log of Certification to BVA (CERTIFICATION) events matching the
+#' specified criteria.
+#'
+#' @section Methodology: Uses the date from the BF41STAT column, limited to
+#'   appeals where the Type Action (BFAC) indicates that it is the original
+#'   action (1). Merged appeals and dummy data are also excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_certification(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_certification <- function (con, where) {
@@ -380,11 +406,17 @@ event_certification <- function (con, where) {
 }
 
 
-#' Retrieve a log of Assigned to Docket (DOCKET) events matching the specified criteria.
+#' Retrieve a log of Assigned to Docket (DOCKET) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the TIADTIME column on the FOLDER
+#'   table, limited to appeals where the Type Action (BFAC) indicates that it is
+#'   the original action (1). Merged appeals and dummy data are also excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_docket(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_docket <- function (con, where) {
@@ -399,11 +431,41 @@ event_docket <- function (con, where) {
 }
 
 
-#' Retrieve a log of Hearing Held (HEARING) events matching the specified criteria.
+#' Retrieve a log of Activated at BVA (ACTIVATION) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the LOCDOUT date from events in the PRIORLOC table
+#'   where the location is "01". The STAFF table is joined when querying the
+#'   PRIORLOC table, and individuals (those where STITLE is not null) are
+#'   replaced with the parent location (STITLE). Merged appeals and dummy data
+#'   are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_activation(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_activation <- function (con, where) {
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseActivationLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of Hearing Held (HEARING) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the HEARING_DATE column on the
+#'   FOLDER table, limited to appeals where the hearing has been held
+#'   (HEARING_DISP = 'H'), and excluding RO formal hearings (HEARING_TYPE <>
+#'   'F'). Merged appeals and dummy data are also excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_hearing(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_hearing <- function (con, where) {
@@ -420,11 +482,18 @@ event_hearing <- function (con, where) {
 }
 
 
-#' Retrieve a log of Transcript Received (TRANSCRIPT) events matching the specified criteria.
+#' Retrieve a log of Transcript Received (TRANSCRIPT) events matching the
+#' specified criteria.
+#'
+#' @section Methodology: Uses the date from the CONRET column on the FOLDER
+#'   table, limited to appeals where the hearing has been held (HEARING_DISP =
+#'   'H'), and excluding RO formal hearings (HEARING_TYPE <> 'F'). Merged
+#'   appeals and dummy data are also excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_transcript(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_transcript <- function (con, where) {
@@ -441,17 +510,168 @@ event_transcript <- function (con, where) {
 }
 
 
-#' Retrieve a log of end state events matching the specified criteria. Includes:
-#' * Withdrawn (WITHDRAWN)
-#' * Dismissed (DISMISSED)
-#' * Vacated (VACATED)
-#' * Remand (REMAND)
-#' * AOJ Grant (AOJ_GRANT)
-#' * Final Dispatch (DISPATCH)
+#' Retrieve a log of Service Organization Review (TO_VSO and FROM_VSO) events
+#' matching the specified criteria.
+#'
+#' @section Methodology: Uses the LOCDIN date from events in the PRIORLOC table
+#'   where the location is not "55" and the subsequent event's location is "55"
+#'   for TO_VSO, and the LOCDOUT date from events where the location is "55" and
+#'   the subsequent location is not "55" for FROM_VSO. The STAFF table is joined
+#'   when querying the PRIORLOC table, and individuals (those where STITLE is
+#'   not null) are replaced with the parent location (STITLE). Merged appeals
+#'   and dummy data are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_vso(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_vso <- function (con, where) {
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseVSOLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of Assignment (ASSIGNMENT) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the LOCDIN date from the first of the events in
+#'   the PRIORLOC table where its location is the decision team (D[1-5]) and the
+#'   subsequent event is also owned by the decision team. This is intended to
+#'   capture the handoff from judge to attorney. The STAFF table is joined when
+#'   querying the PRIORLOC table, and individuals (those where STITLE is not
+#'   null) are replaced with the parent location (STITLE). Merged appeals and
+#'   dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_assignment(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_assignment <- function (con, where) {
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseAssignmentLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of Abeyance (TO_ABEYANCE and FROM_ABEYANCE) events matching
+#' the specified criteria.
+#'
+#' @section Methodology: Uses the LOCDOUT and LOCDIN dates, respectively, from
+#'   events where the location is "24" or "39". The STAFF table is joined when
+#'   querying the PRIORLOC table, and individuals (those where STITLE is not
+#'   null) are replaced with the parent location (STITLE). Merged appeals and
+#'   dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_abeyance(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_abeyance <- function (con, where) {
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseAbeyanceLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of Outside Medical Opinion (TO_OMO and FROM_OMO) events
+#' matching the specified criteria.
+#'
+#' @section Methodology: Uses the LOCDOUT and LOCDIN dates, respectively, from
+#'   events where the location is "92" (Outside BVA) that are preceded by an
+#'   event where the location is "20" (Opinion Request). The STAFF table is
+#'   joined when querying the PRIORLOC table, and individuals (those where
+#'   STITLE is not null) are replaced with the parent location (STITLE). Merged
+#'   appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_omo(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_omo <- function (con, where) {
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseOMOLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of Decision (DECISION) events matching the specified criteria.
+#'
+#' @section Methodology: Looks for a series of events in the following set of
+#'   locations: 1. the decision team (D[1-5]), 2. the administration team
+#'   (A.+|SUP|OPR), and 3. Central Dispatch ("30"). Uses the LOCDIN date from
+#'   the first event. The STAFF table is joined when querying the PRIORLOC
+#'   table, and individuals (those where STITLE is not null) are replaced with
+#'   the parent location (STITLE). Merged appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_decision(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_decision <- function (con, where) {
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseDecisionLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of Quality Review (QR) events matching the specified criteria.
+#'
+#' @section Methodology: Uses the LOCDIN date from events where the location is
+#'   "48" (Outside BVA). The STAFF table is joined when querying the PRIORLOC
+#'   table, and individuals (those where STITLE is not null) are replaced with
+#'   the parent location (STITLE). Merged appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_qr(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_qr <- function (con, where) {
+  source("R/constants.R")
+
+  where <- paste0(
+    "LOCSTTO = ", QRLoc,
+    ifelse(missing(where), "", paste0(" and ", where))
+  )
+
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseQRLocs(locs)
+
+  return(result)
+}
+
+
+#' Retrieve a log of end state events matching the specified criteria.
+#'
+#' Includes: Withdrawn (WITHDRAWN), Dismissed (DISMISSED), Vacated (VACATED),
+#' Remand (REMAND), AOJ Grant (AOJ_GRANT), Final Dispatch (DISPATCH)
+#'
+#' @section Methodology: Uses the date from the BFDDEC column, classified
+#'   according to the BFDC column. Consult \code{EventEndStateClassifier} in
+#'   \code{constants.R} for the mapping used.  Merged appeals and dummy data are
+#'   excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_endStates(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_endStates <- function (con, where) {
@@ -475,11 +695,16 @@ event_endStates <- function (con, where) {
 }
 
 
-#' Retrieve a log of CAVC Decision (CAVC) events matching the specified criteria.
+#' Retrieve a log of CAVC Decision (CAVC) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the CVDDEC column, uniquing on the
+#'   BFKEY column. Merged appeals and dummy data are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_cavc(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_cavc <- function (con, where) {
@@ -494,36 +719,29 @@ event_cavc <- function (con, where) {
 }
 
 
-#' Retrieve a log of all events matching the specified criteria. Includes:
-#' * Notice of Disagreement (NOD)
-#' * Statement of Case (SOC)
-#' * Form 9 (FORM9)
-#' * Supplemental Statement of Case (SSOC)
-#' * Certification to BVA (CERTIFICATION)
-#' * Activated at BVA (ACTIVATION)
-#' * Hearing Held (HEARING)
-#' * Transcript Received (TRANSCRIPT)
-#' * Service Organization Review (TO_VSO and FROM_VSO)
-#' * Assignment (ASSIGNMENT)
-#' * Abeyance (TO_ABEYANCE and FROM_ABEYANCE)
-#' * Outside Medical Opinion (TO_OMO and FROM_OMO)
-#' * Decision (DECISION)
-#' * Quality Review (QR)
-#' * Withdrawn (WITHDRAWN)
-#' * Dismissed (DISMISSED)
-#' * Remand (REMAND)
-#' * AOJ Grant (AOJ_GRANT)
-#' * Final Dispatch (DISPATCH)
-#' * Vacated (VACATED)
-#' * CAVC Decision (CAVC)
+######################################
+####### COALESCED EVENT GROUPS #######
+######################################
+
+#' Retrieve a log of all events matching the specified criteria. Consult
+#' individual event functions for methodology details.
 #'
-#' Does not include:
-#' * VACOLS Creation (VACOLS)
-#' * Assigned to Docket (DOCKET)
+#' @description Includes: Notice of Disagreement (NOD), Statement of Case (SOC),
+#' Form 9 (FORM9), Supplemental Statement of Case (SSOC), Certification to BVA
+#' (CERTIFICATION), Activated at BVA (ACTIVATION), Hearing Held (HEARING),
+#' Transcript Received (TRANSCRIPT), Service Organization Review (TO_VSO and
+#' FROM_VSO), Assignment (ASSIGNMENT), Abeyance (TO_ABEYANCE and FROM_ABEYANCE),
+#' Outside Medical Opinion (TO_OMO and FROM_OMO), Decision (DECISION), Quality
+#' Review (QR), Withdrawn (WITHDRAWN), Dismissed (DISMISSED), Remand (REMAND),
+#' AOJ Grant (AOJ_GRANT), Final Dispatch (DISPATCH), Vacated (VACATED), CAVC
+#' Decision (CAVC)
+#'
+#' Does not include: VACOLS Creation (VACOLS), Assigned to Docket (DOCKET)
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
-#' @return A dataframe of events, with the variables \code{BFCORLID}, \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
 #' @examples
 #' event_all(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_all <- function (con, where) {
@@ -563,13 +781,13 @@ event_all <- function (con, where) {
     rbind((function(con, where) {
       locs <- event_getPriorLocs(con, where)
 
-      activations <- event_parseActivationLocs(locs)
-      vso <- event_parseVSOLocs(locs)
-      assignments <- event_parseAssignmentLocs(locs)
-      abyance <- event_parseAbeyanceLocs(locs)
-      omos <- event_parseOMOLocs(locs)
-      decisions <- event_parseDecisionLocs(locs)
-      qr <- event_parseQRLocs(locs)
+      activations <- .parseActivationLocs(locs)
+      vso <- .parseVSOLocs(locs)
+      assignments <- .parseAssignmentLocs(locs)
+      abyance <- .parseAbeyanceLocs(locs)
+      omos <- .parseOMOLocs(locs)
+      decisions <- .parseDecisionLocs(locs)
+      qr <- .parseQRLocs(locs)
 
       return(rbind(activations, vso, assignments, abyance, omos, decisions, qr))
     })(con, where)) %>%
