@@ -19,3 +19,10 @@ brew install instantclient-basiclite instantclient-sdk
 export LD_LIBRARY_PATH=/usr/local/Cellar/instantclient-basiclite/12.1.0.2.0/lib:$LD_LIBRARY_PATH`
 R CMD INSTALL --configure-args='--with-oci-lib=/usr/local/Cellar/instantclient-basiclite/12.1.0.2.0/lib --with-oci-inc=/usr/local/Cellar/instantclient-sdk/12.1.0.2.0/lib/sdk/include' ROracle_1.2-2.tar.gz
 ```
+
+## .Renviron
+
+`vacolsConnect.R` depends on the presence of two environment variables, which can be set in a `.Renviron` file.
+
+* `vacols_db_password`: The production VACOLS password
+* `vacols_dev_password`: The development VACOLS password

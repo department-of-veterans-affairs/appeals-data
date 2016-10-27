@@ -2,12 +2,12 @@
 EventCaseExclusions <- paste(c(
   "BFKEY <> '2222222'", # omit dummy data - Joe Snuffy
   "BFKEY <> '3082477'", # omit dummy data - Jed Wagner
-  "BFDC <> 'M'" # omit merged cases
+  "(BFDC is null or BFDC <> 'M')" # omit merged cases
 ), collapse = " and ")
 
 # SQL \code{WHERE} statement to be applied to hearing event logs.
 EventHearingExclusions <- paste(c(
-  "HEARING_DISP = 'H'", # limit to held hearings
+  "HEARING_DISP <> 'P'", # omit postponed hearings
   "HEARING_TYPE <> 'F'" # omit RO formal hearings
 ), collapse = " and ")
 
@@ -27,3 +27,5 @@ OMORequestLoc      <- "20"
 OutsideBVALoc      <- "92"
 QRLoc              <- "48"
 VSOLoc             <- "55"
+TransRequestLoc    <- "14"
+TransAbeyanceLoc   <- "18"

@@ -100,6 +100,31 @@ event_getPriorLocs <- function(con, where) {
 ####### PRIOR LOCATION PARSING #######
 ######################################
 
+.parseTranslationLocs <- function(loclog) {
+  source("R/constants.R")
+
+  require("magrittr")
+  require("dplyr")
+  require("tidyr")
+
+  request <- loclog %>%
+    filter(LOC %in% c(TransRequestLoc)) %>%
+    mutate(EVENT_TYPE = "TRANSLATION_REQ") %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDOUT)
+
+  abeyance <- loclog %>%
+    filter(LOC %in% c(TransAbeyanceLoc)) %>%
+    mutate(
+      TO_TRANSLATION = LOCDOUT,
+      FROM_TRANSLATION = LOCDIN
+    ) %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, TO_TRANSLATION, FROM_TRANSLATION) %>%
+    gather(EVENT_TYPE, DATE, -BFCORLID, -APPEAL_DATE, -BFKEY)
+
+  return(rbind(request, abeyance))
+}
+
+
 .parseVSOLocs <- function(loclog) {
   source("R/constants.R")
 
@@ -147,35 +172,6 @@ event_getPriorLocs <- function(con, where) {
     select(BFCORLID, APPEAL_DATE, BFKEY, TO_ABEYANCE, FROM_ABEYANCE) %>%
     gather(EVENT_TYPE, DATE, -BFCORLID, -APPEAL_DATE, -BFKEY) %>%
     return
-}
-
-
-.parseAssignmentLocs <- function(loclog) {
-  source("R/constants.R")
-
-  require("magrittr")
-  require("dplyr")
-
-  loclog %<>%
-    arrange(BFCORLID, APPEAL_DATE, LOCDOUT) %>%
-    mutate(LOC_PLUS1 = ifelse(
-      loclog$BFCORLID == c(tail(loclog$BFCORLID, -1), rep(NA, 1)) &
-        loclog$APPEAL_DATE == c(tail(loclog$APPEAL_DATE, -1), rep(NA, 1)),
-      c(tail(loclog$LOC, -1), rep(NA, 1)), NA
-    ))
-
-  result <- loclog %>%
-    filter(
-      grepl(DecisionLocs, LOC, perl = TRUE),
-      grepl(DecisionLocs, LOC_PLUS1, perl = TRUE)
-    ) %>%
-    group_by(BFKEY) %>%
-    slice(which.min(LOCDOUT)) %>%
-    ungroup() %>%
-    mutate(EVENT_TYPE = "ASSIGNMENT") %>%
-    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDIN)
-
-  return(result)
 }
 
 
@@ -251,20 +247,6 @@ event_getPriorLocs <- function(con, where) {
 }
 
 
-.parseActivationLocs <- function(loclog) {
-  source("R/constants.R")
-
-  require("magrittr")
-  require("dplyr")
-
-  loclog %>%
-    filter(LOC == ActivationLoc) %>%
-    mutate(EVENT_TYPE = "ACTIVATION") %>%
-    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = LOCDOUT) %>%
-    return
-}
-
-
 ##################################
 ####### GET EVENTS OF TYPE #######
 ##################################
@@ -308,6 +290,30 @@ event_vacolsCreation <- function (con, where) {
   join <- "(select LOCKEY, min(LOCDOUT) VACOLS from PRIORLOC group by LOCKEY) on LOCKEY = BFKEY"
 
   return(event_getDateCols(con, c("VACOLS"), join = join, where = where))
+}
+
+
+#' Retrieve a log of Substitution (SUBSTITUTION) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the minimum LOCDOUT timestamp from the PRIORLOC
+#'   table for appeals where BFSUB is "S". Merged appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_substitution(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_substitution <- function (con, where) {
+  join <- "(select LOCKEY, min(LOCDOUT) SUBSTITUTION from PRIORLOC group by LOCKEY) on LOCKEY = BFKEY"
+
+  where <- paste0(
+    "BFSUB = 'S'",
+    ifelse(missing(where), "", paste0(" and ", where))
+  )
+
+  return(event_getDateCols(con, c("SUBSTITUTION"), join = join, where = where))
 }
 
 
@@ -427,18 +433,15 @@ event_docket <- function (con, where) {
     ifelse(missing(where), "", paste0(" and ", where))
   )
 
-  return(event_getDateCols(con, c("TIADTIME"), c("ACTIVATION"), join = join, where = where))
+  return(event_getDateCols(con, c("TIADTIME"), c("DOCKET"), join = join, where = where))
 }
 
 
 #' Retrieve a log of Activated at BVA (ACTIVATION) events matching the specified
 #' criteria.
 #'
-#' @section Methodology: Uses the LOCDOUT date from events in the PRIORLOC table
-#'   where the location is "01". The STAFF table is joined when querying the
-#'   PRIORLOC table, and individuals (those where STITLE is not null) are
-#'   replaced with the parent location (STITLE). Merged appeals and dummy data
-#'   are excluded.
+#' @section Methodology: Uses the date from the TIDRECV column on the FOLDER
+#'   table. Merged appeals and dummy data are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
@@ -447,20 +450,40 @@ event_docket <- function (con, where) {
 #' @examples
 #' event_activation(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_activation <- function (con, where) {
-  locs <- event_getPriorLocs(con, where)
-  result <- .parseActivationLocs(locs)
+  join <- "FOLDER on BFKEY = TICKNUM"
 
-  return(result)
+  return(event_getDateCols(con, c("TIDRECV"), c("ACTIVATION"), join = join, where = where))
 }
 
 
-#' Retrieve a log of Hearing Held (HEARING) events matching the specified
+#' Retrieve a log of Case Review (CASE_REVIEW) events matching the specified
 #' criteria.
 #'
+#' @section Methodology: Uses the date from the TIDKTIME column on the FOLDER
+#'   table. Merged appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_review(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_review <- function (con, where) {
+  join <- "FOLDER on BFKEY = TICKNUM"
+
+  return(event_getDateCols(con, c("TIDKTIME"), c("CASE_REVIEW"), join = join, where = where))
+}
+
+
+#' Retrieve a log of Hearing Held (HEARING) and Hearing Not Held (HEARING_EXCEPTION)
+#' events matching the specified criteria.
+#'
 #' @section Methodology: Uses the date from the HEARING_DATE column on the
-#'   FOLDER table, limited to appeals where the hearing has been held
-#'   (HEARING_DISP = 'H'), and excluding RO formal hearings (HEARING_TYPE <>
-#'   'F'). Merged appeals and dummy data are also excluded.
+#'   FOLDER table, excluding formal hearings (HEARING_DISP = "F"), and RO formal
+#'   hearings (HEARING_TYPE <> "F"). Hearings where the HEARING_DISP = "H" and
+#'   marked as held; others as not held. If a CLSDATE on an unheld hearing is
+#'   provided, that is used instead of HEARING_DATE. Merged appeals and dummy
+#'   data are also excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
@@ -471,21 +494,39 @@ event_activation <- function (con, where) {
 event_hearing <- function (con, where) {
   source("R/constants.R")
 
-  join <- "HEARSCHED on BFKEY = FOLDER_NR"
+  require("magrittr")
+  require("dplyr")
 
-  where <- paste0(
-    EventHearingExclusions,
-    ifelse(missing(where), "", paste0(" and ", where))
+  query <- c(
+    "select BFCORLID, BFDNOD as APPEAL_DATE, BFKEY, HEARING_DISP, HEARING_DATE, CLSDATE",
+    "from BRIEFF",
+    "join HEARSCHED on BFKEY = FOLDER_NR",
+    "where", EventCaseExclusions,
+    "and", EventHearingExclusions
   )
+  if(!missing(where)) query %<>% c("and", where)
+  query %<>% paste(collapse = " ")
 
-  return(event_getDateCols(con, c("HEARING_DATE"), c("HEARING"), join = join, where = where))
+  print(paste("Querying VACOLS:", query))
+  result <- dbGetQuery(con, query) %>%
+    mutate(EVENT_TYPE = ifelse(HEARING_DISP == "H", "HEARING", "HEARING_EXCEPTION")) %>%
+    select(BFCORLID, APPEAL_DATE, BFKEY, EVENT_TYPE, DATE = HEARING_DATE, CLSDATE)
+
+  result[result$EVENT_TYPE == "HEARING_EXCEPTION" & !is.na(result$CLSDATE),]$DATE <-
+    result[result$EVENT_TYPE == "HEARING_EXCEPTION" & !is.na(result$CLSDATE),]$CLSDATE
+
+  result %<>%
+    select(-CLSDATE) %>%
+    filter(!is.na(DATE))
+
+  return(result)
 }
 
 
-#' Retrieve a log of Transcript Received (TRANSCRIPT) events matching the
+#' Retrieve a log of Transcription (TO_TRANSCRIPT and FROM_TRANSCRIPT) events matching the
 #' specified criteria.
 #'
-#' @section Methodology: Uses the date from the CONRET column on the FOLDER
+#' @section Methodology: Uses the dates from the CONSENT and CONRET columns on the FOLDER
 #'   table, limited to appeals where the hearing has been held (HEARING_DISP =
 #'   'H'), and excluding RO formal hearings (HEARING_TYPE <> 'F'). Merged
 #'   appeals and dummy data are also excluded.
@@ -506,7 +547,39 @@ event_transcript <- function (con, where) {
     ifelse(missing(where), "", paste0(" and ", where))
   )
 
-  return(event_getDateCols(con, c("CONRET"), c("TRANSCRIPT"), join = join, where = where))
+  return(event_getDateCols(con, c("CONSENT", "CONRET"), c("TO_TRANSCRIPT", "FROM_TRANSCRIPT"), join = join, where = where))
+}
+
+
+#' Retrieve a log of Translation (TRANSLATION_REQ, TO_TRANSLATION and FROM_TRANSLATION) events
+#' matching the specified criteria.
+#'
+#' @section Methodology: REQ uses the LOCDOUT date from events in the PRIORLOC table
+#'   where the location is "14". TO and FROM use the LOCDOUT and LOCDIN dates, respectively,
+#'   of events in the PRIORLOC table where the location is "18". The STAFF table is joined
+#'   when querying the PRIORLOC table, and individuals (those where STITLE is
+#'   not null) are replaced with the parent location (STITLE). Merged appeals
+#'   and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_translation(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_translation <- function (con, where) {
+  source("R/constants.R")
+
+  where <- paste0(
+    "(LOCSTTO = ", TransAbeyanceLoc,
+    " or LOCSTTO = ", TransRequestLoc, ")",
+    ifelse(missing(where), "", paste0(" and ", where))
+  )
+
+  locs <- event_getPriorLocs(con, where)
+  result <- .parseTranslationLocs(locs)
+
+  return(result)
 }
 
 
@@ -538,13 +611,8 @@ event_vso <- function (con, where) {
 #' Retrieve a log of Assignment (ASSIGNMENT) events matching the specified
 #' criteria.
 #'
-#' @section Methodology: Uses the LOCDIN date from the first of the events in
-#'   the PRIORLOC table where its location is the decision team (D[1-5]) and the
-#'   subsequent event is also owned by the decision team. This is intended to
-#'   capture the handoff from judge to attorney. The STAFF table is joined when
-#'   querying the PRIORLOC table, and individuals (those where STITLE is not
-#'   null) are replaced with the parent location (STITLE). Merged appeals and
-#'   dummy data are excluded.
+#' @section Methodology: Uses the date from the DEASSIGN column on the DECASS
+#'   table. Merged appeals and dummy data are excluded.
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
@@ -553,10 +621,9 @@ event_vso <- function (con, where) {
 #' @examples
 #' event_assignment(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
 event_assignment <- function (con, where) {
-  locs <- event_getPriorLocs(con, where)
-  result <- .parseAssignmentLocs(locs)
+  join <- "DECASS on BFKEY = DEFOLDER"
 
-  return(result)
+  return(event_getDateCols(con, c("DEASSIGN"), c("ASSIGNMENT"), join = join, where = where))
 }
 
 
@@ -607,7 +674,26 @@ event_omo <- function (con, where) {
 }
 
 
-#' Retrieve a log of Decision (DECISION) events matching the specified criteria.
+#' Retrieve a log of Decision Drafted (DRAFTED) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the DEASSIGN column on the DECASS
+#'   table. Merged appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_drafted(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_drafted <- function (con, where) {
+  join <- "DECASS on BFKEY = DEFOLDER"
+
+  return(event_getDateCols(con, c("DERECEIVE"), c("DRAFTED"), join = join, where = where))
+}
+
+
+#' Retrieve a log of Decision Issued (DECISION) events matching the specified criteria.
 #'
 #' @section Methodology: Looks for a series of events in the following set of
 #'   locations: 1. the decision team (D[1-5]), 2. the administration team
@@ -633,7 +719,7 @@ event_decision <- function (con, where) {
 #' Retrieve a log of Quality Review (QR) events matching the specified criteria.
 #'
 #' @section Methodology: Uses the LOCDIN date from events where the location is
-#'   "48" (Outside BVA). The STAFF table is joined when querying the PRIORLOC
+#'   "48" (Quality Review). The STAFF table is joined when querying the PRIORLOC
 #'   table, and individuals (those where STITLE is not null) are replaced with
 #'   the parent location (STITLE). Merged appeals and dummy data are excluded.
 #'
@@ -655,6 +741,25 @@ event_qr <- function (con, where) {
   result <- .parseQRLocs(locs)
 
   return(result)
+}
+
+
+#' Retrieve a log of OUTCODING (OUTCODING) events matching the specified
+#' criteria.
+#'
+#' @section Methodology: Uses the date from the TIOCTIME column on the FOLDER
+#'   table. Merged appeals and dummy data are excluded.
+#'
+#' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
+#' @param where (optional) SQL statement to filter results.
+#' @return A dataframe of events, with the variables \code{BFCORLID},
+#'   \code{APPEAL_DATE}, \code{BFKEY}, \code{EVENT_TYPE} and \code{DATE}.
+#' @examples
+#' event_outcoding(con, where = "BFDNOD > date '2009-01-01' and BFDNOD < date '2009-12-31'")
+event_outcoding <- function (con, where) {
+  join <- "FOLDER on BFKEY = TICKNUM"
+
+  return(event_getDateCols(con, c("TIOCTIME"), c("OUTCODING"), join = join, where = where))
 }
 
 
@@ -718,6 +823,7 @@ event_cavc <- function (con, where) {
     return
 }
 
+# Nothing will appear if not overruled
 
 ######################################
 ####### COALESCED EVENT GROUPS #######
@@ -726,17 +832,19 @@ event_cavc <- function (con, where) {
 #' Retrieve a log of all events matching the specified criteria. Consult
 #' individual event functions for methodology details.
 #'
-#' @description Includes: Notice of Disagreement (NOD), Statement of Case (SOC),
-#' Form 9 (FORM9), Supplemental Statement of Case (SSOC), Certification to BVA
-#' (CERTIFICATION), Activated at BVA (ACTIVATION), Hearing Held (HEARING),
-#' Transcript Received (TRANSCRIPT), Service Organization Review (TO_VSO and
-#' FROM_VSO), Assignment (ASSIGNMENT), Abeyance (TO_ABEYANCE and FROM_ABEYANCE),
-#' Outside Medical Opinion (TO_OMO and FROM_OMO), Decision (DECISION), Quality
-#' Review (QR), Withdrawn (WITHDRAWN), Dismissed (DISMISSED), Remand (REMAND),
-#' AOJ Grant (AOJ_GRANT), Final Dispatch (DISPATCH), Vacated (VACATED), CAVC
-#' Decision (CAVC)
-#'
-#' Does not include: VACOLS Creation (VACOLS), Assigned to Docket (DOCKET)
+#' @description Includes: Notice of Disagreement (NOD), VACOLS Creation
+#'   (VACOLS), Substitution (SUBSTITUTION), Assigned to Docket (DOCKET),
+#'   Statement of Case (SOC), Form 9 (FORM9), Supplemental Statement of Case
+#'   (SSOC), Certification to BVA (CERTIFICATION), Activated at BVA
+#'   (ACTIVATION), Hearing Held (HEARING), Hearing Not Held (HEARING_EXCEPTION),
+#'   Transcription (TO_TRANSCRIPT and FROM_TRANSCRIPT), Translation
+#'   (TRANSLATION_REQ, TO_TRANSLATION and FROM_TRANSLATION), Service
+#'   Organization Review (TO_VSO and FROM_VSO), Assignment (ASSIGNMENT),
+#'   Abeyance (TO_ABEYANCE and FROM_ABEYANCE), Outside Medical Opinion (TO_OMO
+#'   and FROM_OMO), Decision Drafted (DRAFTED), Decision Issued (DECISION),
+#'   Quality Review (QR), Outcoding (OUTCODING), Withdrawn (WITHDRAWN),
+#'   Dismissed (DISMISSED), Remand (REMAND), AOJ Grant (AOJ_GRANT), Final
+#'   Dispatch (DISPATCH), Vacated (VACATED), CAVC Decision (CAVC)
 #'
 #' @param con \code{OraConnection} to VACOLS created by \code{vacolsConnect}.
 #' @param where (optional) SQL statement to filter results.
@@ -752,8 +860,8 @@ event_all <- function (con, where) {
 
   events <-
     rbind((function(con, where) {
-      cols <- c("BFDNOD", "BFDSOC", "BFD19", "BF41STAT")
-      labs <- c("NOD", "SOC", "FORM9", "CERTIFICATION")
+      cols <- c("BFDNOD", "BFDSOC", "BFD19", "BF41STAT", "TIADTIME")
+      labs <- c("NOD", "SOC", "FORM9", "CERTIFICATION", "DOCKET")
 
       join <- "FOLDER on BFKEY = TICKNUM"
 
@@ -764,32 +872,30 @@ event_all <- function (con, where) {
 
       return(event_getDateCols(con, cols, labs, join = join, where = where))
     })(con, where)) %>%
+    rbind(event_vacolsCreation(con, where)) %>%
+    rbind(event_substitution(con, where)) %>%
     rbind(event_ssoc(con, where)) %>%
     rbind((function(con, where) {
-      cols <- c("HEARING_DATE", "CONRET")
-      labs <- c("HEARING", "TRANSCRIPT")
+      cols <- c("TIDRECV", "TIDKTIME", "TIOCTIME", "DEASSIGN", "DERECEIVE")
+      labs <- c("ACTIVATION", "CASE_REVIEW", "OUTCODING", "ASSIGNMENT", "DRAFT_DECISION")
 
-      join <- "HEARSCHED on BFKEY = FOLDER_NR"
-
-      where <- paste0(
-        EventHearingExclusions,
-        ifelse(missing(where), "", paste0(" and ", where))
-      )
+      join <- "FOLDER on BFKEY = TICKNUM join DECASS on BFKEY = DEFOLDER"
 
       return(event_getDateCols(con, cols, labs, join = join, where = where))
     })(con, where)) %>%
+    rbind(event_hearing(con, where)) %>%
+    rbind(event_transcript(con, where)) %>%
     rbind((function(con, where) {
       locs <- event_getPriorLocs(con, where)
 
-      activations <- .parseActivationLocs(locs)
       vso <- .parseVSOLocs(locs)
-      assignments <- .parseAssignmentLocs(locs)
+      translation <- .parseTranslationLocs(locs)
       abyance <- .parseAbeyanceLocs(locs)
       omos <- .parseOMOLocs(locs)
-      decisions <- .parseDecisionLocs(locs)
       qr <- .parseQRLocs(locs)
+      decisions <- .parseDecisionLocs(locs)
 
-      return(rbind(activations, vso, assignments, abyance, omos, decisions, qr))
+      return(rbind(vso, translation, abyance, omos, qr, decisions))
     })(con, where)) %>%
     rbind(event_endStates(con, where)) %>%
     rbind(event_cavc(con, where)) %>%

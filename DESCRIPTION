@@ -13,5 +13,7 @@ Imports:
     ROracle,
     magrittr,
     dplyr,
-    tidyr
+    tidyr,
+    ggplot2,
+    edeaR
 RoxygenNote: 5.0.1
