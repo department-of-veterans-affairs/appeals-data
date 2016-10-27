@@ -1,0 +1,285 @@
+---
+title: "Dispatch: Classification AMC- and RO-Generated EPs"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r include = FALSE}
+source("../R/vacolsConnect.R")
+library("dplyr")
+library("knitr")
+library("scales")
+
+con <- vacolsConnect()
+```
+
+## Objective
+
+Determine whether a case sitting in location 97 (In Transit AMC) should be routed to AMC (location 98) or and RO (location 50) for creation of the end product (EP).
+
+See: [caseflow-certification#370](https://github.com/department-of-veterans-affairs/caseflow-certification/issues/370)
+
+## Status
+
+**Prototype**
+
+An initial classifier has been written, with 85% accuracy. We aim to get a more detailed understanding of how AMC interprets each of the reasons to decline jurisdiction, which should improve accuracy. A key goal is to effectively eliminate the Type I error rate, which would enable automatic routing of most RO cases, with other cases being identified by AMC personel and a Caseflow interface capturing their reasons for later analysis.
+
+## Classifier
+
+Working with Nicholas, we identified ways to query VACOLS for the presence of the factors listed in [this AMC document](https://cloud.githubusercontent.com/assets/4975959/19564214/b9261f7c-96b0-11e6-905b-94eb2ae6c728.jpg).
+
+Each item listed has been translated into an `EPTEST_` flag (some are broken out into multiple tests, e.g. "Education or Vocational Rehabilitation"). Some of these are at the issue level, others are at the case level, which is why we have two `select` statements in the query.
+
+```{r}
+cases <- dbGetQuery(con, "
+  select
+    t1.*,
+    EPTEST_ATTORNEY,
+    EPTEST_MANILA,
+    EPTEST_FOREIGN,
+    EPTEST_CLCW,
+    EPTEST_RADIATION,
+    EPTEST_MUSTGAS,
+    EPTEST_INCARCERATION
+  from
+  (
+    select
+      BFKEY,
+
+      -- ** ISSUES ** --
+
+      -- Education --
+      case when count(case when
+        ISSPROG = '03'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_EDUCATION,
+
+      -- Insurance --
+      case when count(case when
+        ISSPROG = '04'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_INSURANCE,
+
+      -- Home Loan Guaranty --
+      case when count(case when
+        ISSPROG = '05'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_GUARANTY,
+
+      -- VAMC/Medical --
+      case when count(case when
+        ISSPROG = '06'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_MEDICAL,
+
+      -- Pension --
+      case when count(case when
+        ISSPROG = '07'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_PENSION,
+
+      -- VR&E --
+      case when count(case when
+        ISSPROG = '08'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_VRE,
+
+      -- National Cemetery Administration --
+      case when count(case when
+        ISSPROG = '11'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_NCA,
+
+      -- Competency of Payee --
+      case when count(case when
+        ISSPROG = '02' and ISSCODE = '06'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_COMPETENCY,
+
+      -- DIC/Death --
+      case when count(case when
+        ISSPROG = '02' and ISSCODE = '08'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_DIC,
+
+      -- Attorney Fees --
+      case when count(case when
+        ISSPROG = '09' and ISSCODE = '01'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_ATTORNEYFEES,
+
+      -- Spina Bifida --
+      case when count(case when
+        ISSPROG = '09' and ISSCODE = '03'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_SPINABIFIDA,
+
+      -- Overpayment --
+      case when count(case when
+        (ISSPROG = '02' and ISSCODE = '13' and ISSLEV1 = '02') or
+        (ISSPROG = '03' and ISSCODE = '05' and ISSLEV1 = '02') or
+        (ISSPROG = '07' and ISSCODE = '10' and ISSLEV1 = '02')
+      then 1 end) > 0 then 1 else 0 end as EPTEST_OVERPAYMENT,
+
+      -- Accrued --
+      case when count(case when
+        (ISSPROG = '02' and ISSCODE = '01' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '07' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '09' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '11' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '12' and ISSLEV1 = '02') or
+        (ISSPROG = '02' and ISSCODE = '14' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '15' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '17' and ISSLEV1 = '01') or
+        (ISSPROG = '02' and ISSCODE = '18' and ISSLEV1 = '01' and ISSLEV2 = '01') or
+        (ISSPROG = '02' and ISSCODE = '20' and ISSLEV1 = '01') or
+        (ISSPROG = '03' and ISSCODE = '01') or
+        (ISSPROG = '07' and ISSCODE = '01')
+      then 1 end) > 0 then 1 else 0 end as EPTEST_ACCRUED,
+
+      -- ** REMANDS ** --
+
+      -- Due Process: BVA Travel Board/Video Hearing --
+      case when count(case when
+        RMDVAL = 'EA'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_HEARING,
+
+      -- Manlincon Compliance --
+      case when count(case when
+        RMDVAL = 'ED'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_MANLINCON,
+
+      -- Rice Compliance --
+      case when count(case when
+        ISSPROG = '02' and ISSCODE = '17' and RMDVAL = 'AA'
+      then 1 end) > 0 then 1 else 0 end as EPTEST_RICE
+
+    from
+      BRIEFF
+      left join ISSUES on BRIEFF.BFKEY = ISSUES.ISSKEY
+      left join RMDREA on ISSUES.ISSKEY = RMDREA.RMDKEY and ISSUES.ISSSEQ = RMDREA.RMDISSSEQ
+
+    group by BFKEY
+  ) t1
+  join
+  (
+    select
+      BFKEY,
+      BFDDEC,
+
+      -- ** DOCKET ** --
+
+      -- Private Attorney --
+      case when
+        BFSO in ('T', 'U', 'Z')
+      then 1 else 0 end as EPTEST_ATTORNEY,
+
+      -- Manila --
+      case when
+        BFREGOFF = 'RO58'
+      then 1 else 0 end as EPTEST_MANILA,
+
+      -- Foreign Claims --
+      case when
+        BFREGOFF = 'RO71'
+      then 1 else 0 end as EPTEST_FOREIGN,
+
+      -- ** SPECIAL INTERESTS ** --
+
+      -- Camp Legune Contaminated Water --
+      case when
+        TICLCW = 'Y'
+      then 1 else 0 end as EPTEST_CLCW,
+
+      -- Radiation --
+      case when
+        TIRADB = 'Y' or TIRADN = 'Y'
+      then 1 else 0 end as EPTEST_RADIATION,
+
+      -- Mustard Gas --
+      case when
+        TIMGAS = 'Y'
+      then 1 else 0 end as EPTEST_MUSTGAS,
+
+      -- Incarceration --
+      case when
+        SINCAR = 'Y'
+      then 1 else 0 end as EPTEST_INCARCERATION
+
+    from
+      BRIEFF
+      left join CORRES on BRIEFF.BFCORKEY = CORRES.STAFKEY
+      left join FOLDER on BRIEFF.BFKEY = FOLDER.TICKNUM
+  ) t2
+  on t1.BFKEY = t2.BFKEY
+  where BFDDEC >= date '2015-10-01' and BFDDEC < date '2016-10-01'
+") %>%
+  mutate(
+    EPTEST_ANY = ifelse(rowSums(.[2:length(.)]) > 0, 1, 0),
+    prediction = ifelse(EPTEST_ANY > 0, "50", "98")
+  )
+```
+
+## Test Cases
+
+We create a set of test cases that A) were decided during FY16, B) that passed through location 97, and C) that entered at least one of location 98 or 50 without being routed back to 97, reporting which of 98 or 50 was the last observed location.
+
+```{r}
+testCases <- dbGetQuery(con, "
+  select
+    BFKEY,
+    LOCSTTO as LOC
+
+  from BRIEFF
+
+  join
+  (
+    select
+      LOCKEY as MLOCKEY,
+      max(LOCDOUT) MLOCDOUT,
+      count(case when LOCSTTO = '97' then 1 end) MAMCCNT
+
+    from PRIORLOC
+    where LOCSTTO in ('50', '97', '98')
+    group by LOCKEY
+  ) on MLOCKEY = BFKEY
+
+  join PRIORLOC
+    on LOCKEY = BFKEY and LOCDOUT = MLOCDOUT
+
+  where MAMCCNT > 0
+    and LOCSTTO <> '97'
+    and BFDDEC >= date '2015-10-01' and BFDDEC < date '2016-10-01'
+") %>%
+  inner_join(cases, by = c("BFKEY")) %>%
+  mutate(
+    correct = prediction == LOC,
+    type1 = prediction == "50" & LOC == "98",
+    type2 = prediction == "98" & LOC == "50"
+  )
+```
+
+## Results
+
+### Predictions
+```{r}
+results <- table(testCases$LOC, testCases$prediction) %>%
+  apply(c(1, 2), function (x) {
+    paste0(comma(x), " (", percent(x / nrow(testCases)), ")")
+  })
+rownames(results) <- c("Actual: 50", "Actual: 98")
+colnames(results) <- c("Predicted: 50", "Predicted: 98")
+kable(results)
+```
+
+### Type I errors by test
+```{r}
+positive <- colSums(testCases[,3:(length(testCases) - 4)])
+type1_error <- colSums(testCases[testCases$type1,3:(length(testCases) - 4)])
+kable(data.frame(test = names(positive), positive, type1_error, error_rate = type1_error / positive) %>%
+  arrange(test == "EPTEST_ANY", desc(type1_error)))
+  
+```
+
+## Next Steps
+
+We need additional information on the following items:
+
+* Private attorney: do they handle "Agent" cases and cases with representation by the National Veterans Legal Services Program (a private organization).
+* We need to look further into Manila Remand/Filipino Veterans Equity Compensation Fund. How do they determine what qualifies?
+* We need to check whether AMC handles compensation overpayments.
+* We don't know what "No Rating Issues" means.
+* We don't know what "Dependencies" means.
+
+Additionally, we want to start investigating those tests that exhibit a particularly high error rate, for example `EPTEST_ACCRUED`.
