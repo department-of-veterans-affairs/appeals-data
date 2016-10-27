@@ -1,0 +1,45 @@
+---
+title: "Certification: Uptake Since Launch"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r include = FALSE}
+source("../R/vacolsConnect.R")
+library("dplyr")
+library("ggplot2")
+library("knitr")
+
+con <- vacolsConnect()
+```
+
+## Objective
+
+Show the share of certifications that use Caseflow. Report run 10/27/16.
+
+```{r}
+library('ggplot2')
+
+certifications <- dbGetQuery(con, "
+  select BF41STAT, BFDCERTOOL
+  from BRIEFF
+  where BF41STAT > date '2013-10-01' and BF41STAT < date '2016-10-31'
+") %>%
+  transmute(
+    caseflow = !is.na(BFDCERTOOL),
+    month = substr(BF41STAT, 1, 7)
+  )
+
+spaced_labs <- function (x, n) {
+  result <- sort(unique(x))
+  result[(seq_len(length(result)) - 1) %% n != 0] <- ""
+  return(result)
+}
+
+ggplot(certifications, aes(x = month, fill = caseflow)) +
+  scale_x_discrete("month", labels = spaced_labs(certifications$month, 4)) +
+  geom_bar()
+
+kable(table(certifications$month, certifications$caseflow))
+```
