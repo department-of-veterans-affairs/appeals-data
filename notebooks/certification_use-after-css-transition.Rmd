@@ -40,7 +40,7 @@ uptake <- dbGetQuery(con, "
 ") %>%
   mutate(
     caseflow = ifelse(is.na(BFDCERTOOL), "Not_Caseflow", "Caseflow"),
-    group = ifelse(BF41STAT < as.POSIXct("2016-10-17"), "pre", "post")
+    group = ifelse(BF41STAT < as.POSIXct("2016-10-17"), "pre", paste0("week", floor((as.Date(BF41STAT) - as.Date("2016-10-17")) / 7) + 1))
   ) %>%
   count(BFREGOFF, caseflow, group) %>%
   spread(caseflow, n, fill = 0) %>%
@@ -51,16 +51,11 @@ uptake <- dbGetQuery(con, "
     Percent_Caseflow = Caseflow / (Caseflow + Not_Caseflow)
   ) %>%
   spread(group, Percent_Caseflow) %>%
-  mutate(
-    change = round((post - pre) * 100),
-    pre = percent(pre),
-    post = percent(post)
-  ) %>%
+  mutate(max_post = pmax(week1, week2, week3, week4, na.rm = TRUE)) %>%
+  arrange(-max_post) %>%
+  mutate_each(funs(percent), pre, starts_with("week"), max_post) %>%
   left_join(ro, by = c("BFREGOFF")) %>%
-  select(-Station) %>%
-  arrange(change)
-
-uptake$change <- ifelse(uptake$change > 0, paste0("+", uptake$change), uptake$change)
+  select(-week5, -Station)
 
 kable(uptake)
 ```

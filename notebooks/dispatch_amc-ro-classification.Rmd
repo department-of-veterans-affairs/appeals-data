@@ -128,6 +128,13 @@ cases <- dbGetQuery(con, "
         (ISSPROG = '07' and ISSCODE = '01')
       then 1 end) > 0 then 1 else 0 end as EPTEST_ACCRUED,
 
+      -- Non-Rating Issues --
+      case when count(case when
+        (ISSPROG = '02' and ISSCODE = '16') or
+        (ISSPROG = '02' and ISSCODE = '21') or
+        (ISSPROG = '02' and ISSCODE = '22')
+      then 1 end) > 0 then 1 else 0 end as EPTEST_NONRATING,
+
       -- ** REMANDS ** --
 
       -- Due Process: BVA Travel Board/Video Hearing --
@@ -207,7 +214,7 @@ cases <- dbGetQuery(con, "
 ") %>%
   mutate(
     EPTEST_ANY = ifelse(rowSums(.[2:length(.)]) > 0, 1, 0),
-    prediction = ifelse(EPTEST_ANY > 0, "50", "98")
+    prediction = ifelse(EPTEST_ANY > 0, "RO", "AMC")
   )
 ```
 
@@ -231,7 +238,7 @@ testCases <- dbGetQuery(con, "
       count(case when LOCSTTO = '97' then 1 end) MAMCCNT
 
     from PRIORLOC
-    where LOCSTTO in ('50', '97', '98')
+    where LOCSTTO in ('50', '51', '54', '70', '97', '98')
     group by LOCKEY
   ) on MLOCKEY = BFKEY
 
@@ -244,9 +251,10 @@ testCases <- dbGetQuery(con, "
 ") %>%
   inner_join(cases, by = c("BFKEY")) %>%
   mutate(
-    correct = prediction == LOC,
-    type1 = prediction == "50" & LOC == "98",
-    type2 = prediction == "98" & LOC == "50"
+    actual = ifelse(LOC != "98", "RO", "AMC"),
+    correct = prediction == actual,
+    type1 = prediction == "RO" & LOC == "98",
+    type2 = prediction == "AMC" & LOC != "98"
   )
 ```
 
@@ -254,19 +262,19 @@ testCases <- dbGetQuery(con, "
 
 ### Predictions
 ```{r}
-results <- table(testCases$LOC, testCases$prediction) %>%
+results <- table(testCases$actual, testCases$prediction) %>%
   apply(c(1, 2), function (x) {
     paste0(comma(x), " (", percent(x / nrow(testCases)), ")")
   })
-rownames(results) <- c("Actual: 50", "Actual: 98")
-colnames(results) <- c("Predicted: 50", "Predicted: 98")
+rownames(results) <- c("Actual: AMC", "Actual: RO")
+colnames(results) <- c("Predicted: AMC", "Predicted: RO")
 kable(results)
 ```
 
 ### Type I errors by test
 ```{r}
-positive <- colSums(testCases[,3:(length(testCases) - 4)])
-type1_error <- colSums(testCases[testCases$type1,3:(length(testCases) - 4)])
+positive <- colSums(testCases[,3:(length(testCases) - 5)])
+type1_error <- colSums(testCases[testCases$type1,3:(length(testCases) - 5)])
 kable(data.frame(test = names(positive), positive, type1_error, error_rate = type1_error / positive) %>%
   arrange(test == "EPTEST_ANY", desc(type1_error)))
   
@@ -276,9 +284,6 @@ kable(data.frame(test = names(positive), positive, type1_error, error_rate = typ
 
 We need additional information on the following items:
 
-* Private attorney: do they handle "Agent" cases and cases with representation by the National Veterans Legal Services Program (a private organization).
-* We need to look further into Manila Remand/Filipino Veterans Equity Compensation Fund. How do they determine what qualifies?
-* We need to check whether AMC handles compensation overpayments.
 * We don't know what "No Rating Issues" means.
 * We don't know what "Dependencies" means.
 
