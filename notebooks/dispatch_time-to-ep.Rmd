@@ -8,17 +8,26 @@ output:
 ```{r include = FALSE}
 source("../R/vacolsConnect.R")
 library("dplyr")
+library("knitr")
 
 con <- vacolsConnect()
 ```
 
 ## Objective
 
+Develop a baseline for the time between a case being dispatched by BVA to the establishment of a claim at the Appeals Management Center (AMC) or a regional office (RO). As there are anecdotal reports that cases can get lost in this seam, we also want to look for cases that are missing an end product (EP) and understand whether this is intentional or an oversight.
+
+There are two primary divisions to understand about this process. The first is between those cases with a remand (Remand or Partial Grant disposition), and those with only grants (or denials, Full Grant disposition). As VACOLS places the latter in history (HIS) status immediately, it is not possible to track their location after dispatch. The second division is between AMC and RO. Although every AMC claim should have an associated EP, we understand that this is not the case for ROs. Taken together, we have the most information about AMC remands (they definitely showed up at AMC and should have an EP). For RO remands that they were routed to an RO, but not whether they should have had an RO created, unless the case in VACOLS has been closed out (placed in HIS status). For full grants, we do not know whether they ended up at AMC or the RO, unless we have an EP.
+
 ## Status
 
 **In Progress**
 
-## Results
+We have conducted an initial analysis, and are following up by sharing potential missing cases with officials who will be able to identify if there is a reason for a case to lack an EP. This research will inform future iterations of this analysis, and could lead to the development of a routine set of reports analagous to those in use for the "frontend seam."
+
+## Analysis
+
+Our sample is all VBMS cases decided in FY2016 that are marked in VACOLS as being "Allowed" or "Remanded." Note that VACOLS marks as "Allowed" any case that has at least one allowed issue, or in AMC parlance "Full Grants" and "Partial Grants." We also exclude cases that are returned from CAVC (this exclusion should probably be dropped in the final analysis).
 
 ```{r}
 vacols_decisions <- dbGetQuery(con, "
@@ -51,15 +60,24 @@ vacols_decisions <- dbGetQuery(con, "
   left join PRIORLOC
     on LOCKEY = BFKEY and LOCDOUT = MLOCDOUT
 
+  join FOLDER on TICKNUM = BFKEY
+
   where (BFDC = '1' or BFDC = '3')
     and BFAC <> '7'
+    and TIVBMS = 'Y'
     and BFDDEC >= date '2015-10-01' and BFDDEC < date '2016-10-01'
 ") %>%
   mutate(
     case_decision_date = as.Date(BFDDEC),
     disposition = ifelse(REMANDED > 0 & ALLOWED > 0, "Partial Grant", ifelse(REMANDED == 0, "Full Grant", "Remand"))
   )
+```
 
+---
+
+We then fetch from BGS any EP-related claims that exist for the uniqued set of Veterans that appear in this sample. This uses the ruby script `claims_for_bfcorlid.rb`. In addition to the summary columns, this script also appends the first journal entry for the claim, which includes the date it was first entered into VBMS.
+
+```{r}
 # Doesn't work because bundler, gemfile contents not installed
 # claims <- system("ruby ./ruby/claims_for_bfcorlid.rb", intern = TRUE, input = unique(decisions$BFCORLID))
 
@@ -68,7 +86,13 @@ write.table(unique(decisions$BFCORLID), "../tmp/cases.txt", quote = FALSE, row.n
 # Run the ruby script manually
 
 claims <- read.csv("../tmp/claims.csv", stringsAsFactors = FALSE)
+```
 
+---
+
+We now merge the decisions and the claims using the Veteran ID and the decision date (in VBMS parlance, the "claim receive date"). We prefer precise matches, but also match if there is a claim within 31 days of the decision date. We drop from the analysis any cases where the first journal date is less than the decision date; this suggests that either its a bad match or a date was misentered. We add a time to EP column, which is the first journal date subtracted by the decision date. And we mark those EPs that were created by station 397 as being AMC EPs. Finally, we also create a clean subset of these decisions that excludes cases where multiple cases were decided for a single Veteran on a single day (we are unable to distinguish between these cases as those are our primary keys) and where there is a valid matched EP.
+
+```{r}
 merged_decisions_claims <- vacols_decisions %>%
   inner_join(claims, by = c("BFCORLID")) %>%
   mutate(
@@ -106,7 +130,95 @@ decisions <- vacols_decisions %>%
   )
 
 clean_decisions <- filter(decisions, !multi_decision, !is.na(time_to_ep))
-
-tapply(clean_decisions$time_to_ep, list(clean_decisions$disposition, clean_decisions$amc_ep), median)
-tapply(clean_decisions$time_to_ep, list(clean_decisions$disposition, clean_decisions$amc_ep), mean)
 ```
+
+## Results
+
+Let's look at the median number of days between the decision date and the EP creation, looking just at the clean subset described above. We note that AMC processes Partial Grants and Remands with efficiency, although Full Grants take longer. Discovery has shown that only a single person at AMC processes all full grants, and as these cases are in HIS status in VACOLS, he must track his work independently using date-bracketed reports.
+
+```{r}
+kable(tapply(clean_decisions$time_to_ep, list(clean_decisions$disposition, clean_decisions$amc_ep), median), col.names = c("RO", "AMC"))
+```
+
+Next up, the mean time to create the EP. These timings show a long tail, but we'll wait on further analysis until we have a better understanding of what the causes are, particularly for some of the extreme values.
+
+```{r}
+kable(tapply(clean_decisions$time_to_ep, list(clean_decisions$disposition, clean_decisions$amc_ep), mean), col.names = c("RO", "AMC"))
+```
+
+Let's begin looking at cases that were missing an EP. Of the...
+
+```{r}
+print(nrow(decisions))
+```
+
+...decisions decided in FY2016, we find...
+
+```{r}
+print(nrow(no_ep_decisions))
+```
+
+...that do not have a matching EP (including both precise and fuzzy matches). Also, note that this analysis does not exclude cases where multiple cases were decided for a single Veteran on a single day, so some missing EPs may be hidden by result of being matched to the EP of a case decided the same day. Here are those decisions broken out by disposition.
+
+```{r}
+no_ep_decisions <- filter(decisions, is.na(benefit_claim_id))
+table(no_ep_decisions$disposition)
+```
+
+If we look exclusively at the Partial Grants and Remands we get two benefits: first, we can exclude those cases that have been affirmatively marked as closed (moved from "REM" status to "HIS" status); and second, we can see whether they where they were checked out to for claim establishment. Here are the dispositions of those cases (note that a handful of cases are in "REM" status despite having no remanded issues for unknown reasons).
+
+```{r}
+no_ep_remands <- filter(no_ep_decisions, BFMPRO == "REM")
+table(no_ep_remands$disposition)
+```
+
+And here are their locations. Locations 50, 51, and 54 are all associated with ROs. Location 98 is for AMC remands. We can see that the vast majority of these missing EPs were assigned to ROs.
+
+```{r}
+table(no_ep_remands$EPLOC)
+```
+
+One interesting hypothesis is that if these cases are actually missing, partial grants would be more likely to be closed than remands as they would be less likely to escape the attention of the Veteran. However, the closed rates between partial grants and remands are effectively the same.
+
+In order to begin to assess whether a RO does not use EPs as a matter of course, we could look at counts of matched and unmatched decisions by RO of record in VACOLS. Note, however, that the RO of record may not have been assigned to create the EP. We cannot use the more accurate first journal station from the EP for this analysis as we're comparing against cases that do not have an EP; a future inquiry should look at the frequency with which the RO of record is assigned to establish the claim, using cases that do have an EP.
+
+```{r}
+ep_rate_by_ro <- decisions %>%
+  filter(EPLOC %in% c("50", "51", "54"), disposition != "Full Grant") %>%
+  replace_na(list(has_match = FALSE)) %>%
+  group_by(has_match) %>%
+  count(BFREGOFF) %>%
+  spread(has_match, n) %>%
+  select(BFREGOFF, has_ep = `TRUE`, missing = `FALSE`) %>%
+  replace_na(list(missing = 0, has_ep = 0)) %>%
+  mutate(ep_rate = has_ep / (missing + has_ep)) %>%
+  arrange(desc(ep_rate))
+kable(ep_rate_by_ro)
+```
+
+We can generate reports of cases that are worth looking into. These reports are not shown as they contain PII; contact Chris for more information.
+
+```{r}
+potentially_missing_eps <- filter(no_ep_decisions,
+                                  BFMPRO != "HIS" | disposition == "Full Grant")
+table(potentially_missing_eps$disposition)
+
+potentially_missing_remands <- filter(potentially_missing_eps, disposition != "Full Grant")
+
+amc_potentially_missing_remands <- potentially_missing_remands %>%
+  filter(EPLOC == "98") %>%
+  select(BFCORLID, case_decision_date, disposition) %>%
+  arrange(case_decision_date)
+
+potential_matches_for_missing_eps <- amc_potentially_missing_remands %>%
+  left_join(claims, by = c("BFCORLID")) %>%
+  select(BFCORLID, case_decision_date, claim_receive_date, journal_date.y)
+```
+
+Our initial focus is those cases that 1) are partial grants or remands, 2) were last seen in location 98 (AMC Remand), 3) are marked as VBMS cases, 4) but do not have an end product in VBMS, and 5) have not yet been closed. There are...
+
+```{r}
+print(nrow(amc_potentially_missing_remands))
+```
+
+...such cases.
