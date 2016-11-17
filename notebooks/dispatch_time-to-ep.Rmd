@@ -8,6 +8,7 @@ output:
 ```{r include = FALSE}
 source("../R/vacolsConnect.R")
 library("dplyr")
+library("tidyr")
 library("knitr")
 
 con <- vacolsConnect()
@@ -81,7 +82,7 @@ We then fetch from BGS any EP-related claims that exist for the uniqued set of V
 # Doesn't work because bundler, gemfile contents not installed
 # claims <- system("ruby ./ruby/claims_for_bfcorlid.rb", intern = TRUE, input = unique(decisions$BFCORLID))
 
-write.table(unique(decisions$BFCORLID), "../tmp/cases.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
+write.table(unique(vacols_decisions$BFCORLID), "../tmp/cases.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
 # Run the ruby script manually
 
@@ -155,13 +156,13 @@ print(nrow(decisions))
 ...decisions decided in FY2016, we find...
 
 ```{r}
+no_ep_decisions <- filter(decisions, is.na(benefit_claim_id))
 print(nrow(no_ep_decisions))
 ```
 
 ...that do not have a matching EP (including both precise and fuzzy matches). Also, note that this analysis does not exclude cases where multiple cases were decided for a single Veteran on a single day, so some missing EPs may be hidden by result of being matched to the EP of a case decided the same day. Here are those decisions broken out by disposition.
 
 ```{r}
-no_ep_decisions <- filter(decisions, is.na(benefit_claim_id))
 table(no_ep_decisions$disposition)
 ```
 
@@ -210,7 +211,7 @@ amc_potentially_missing_remands <- potentially_missing_remands %>%
   select(BFCORLID, case_decision_date, disposition) %>%
   arrange(case_decision_date)
 
-potential_matches_for_missing_eps <- amc_potentially_missing_remands %>%
+potential_matches_for_missing_eps <- potentially_missing_remands %>%
   left_join(claims, by = c("BFCORLID")) %>%
   select(BFCORLID, case_decision_date, claim_receive_date, journal_date.y)
 ```
