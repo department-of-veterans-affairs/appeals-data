@@ -68,6 +68,7 @@ vacols_decisions <- dbGetQuery(con, "
     and TIVBMS = 'Y'
     and BFDDEC >= date '2015-10-01' and BFDDEC < date '2016-10-01'
 ") %>%
+  filter(REMANDED > 0 | ALLOWED > 0) %>%
   mutate(
     case_decision_date = as.Date(BFDDEC),
     disposition = ifelse(REMANDED > 0 & ALLOWED > 0, "Partial Grant", ifelse(REMANDED == 0, "Full Grant", "Remand"))
