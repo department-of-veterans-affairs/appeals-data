@@ -1,8 +1,11 @@
 ## What effect does a hearing have on whether an issue is allowed/remanded?
 
 source("R/vacolsConnect.R")
-library("dplyr")
-library("ggplot2")
+library(dplyr)
+library(ggplot2)
+
+con <- vacolsConnect()
+query <- function (query) { return(dbGetQuery(con, query)) }
 
 issues <- query("
 select
