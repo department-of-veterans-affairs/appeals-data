@@ -1,12 +1,13 @@
 ---
-title: "Dispatch: Classification AMC- and RO-Generated EPs"
-output: 
-  html_notebook: 
+title: 'Dispatch: Classification AMC- and RO-Generated EPs'
+output:
+  html_notebook:
     code_folding: hide
+  html_document: default
 ---
 
 ```{r include = FALSE}
-source("../R/vacolsConnect.R")
+source("../../R/vacolsConnect.R")
 library("dplyr")
 library("knitr")
 library("scales")

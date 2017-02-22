@@ -29,6 +29,21 @@ QRLoc              <- "48"
 VSOLoc             <- "55"
 TransRequestLoc    <- "14"
 TransAbeyanceLoc   <- "18"
+RemReturnLoc       <- "96"
 
 # VBMS claim codes that could be End Products (EPs)
-EPCandidates <- c("170APPACT", "170APPACTPMC", "170PGAMC", "170RMD", "170RMDAMC", "170RMDPMC", "172GRANT", "172BVAG", "172BVAGPMC")
+EPCandidates <- c(
+  "170APPACT",
+  "170APPACTPMC",
+  "170PGAMC",
+  "170RMD",
+  "170RMDAMC",
+  "170RMDPMC",
+  "172GRANT",
+  "172BVAG",
+  "172BVAGPMC",
+  "400CORRC",
+  "400CORRCPMC",
+  "930RC",
+  "930RCPMC"
+)

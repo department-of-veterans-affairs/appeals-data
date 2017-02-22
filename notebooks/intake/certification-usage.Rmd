@@ -1,0 +1,111 @@
+---
+title: "Caseflow Certification Usage"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r include = FALSE}
+source("../../R/vacolsConnect.R")
+library("dplyr")
+library("ggplot2")
+library("scales")
+library("knitr")
+
+con <- vacolsConnect()
+```
+
+## Objective
+
+Show the share of appeals that are certified using Caseflow. Report run 02/22/17.
+
+### All appeals
+
+```{r}
+ro <- read.csv("../../data/ro.csv", stringsAsFactors = FALSE) %>%
+  select(BFREGOFF, RO = Name)
+
+certifications <- dbGetQuery(con, "
+  select BF41STAT, BFDCERTOOL, BFREGOFF, TIVBMS
+  from BRIEFF join FOLDER on BFKEY = TICKNUM
+  where BF41STAT >= date '2016-01-01' and BF41STAT < date '2017-02-01'
+  and BFAC = '1'
+") %>%
+  mutate(
+    caseflow = !is.na(BFDCERTOOL),
+    month = as.Date(paste0(substr(BF41STAT, 1, 7), "-01"))
+  ) %>%
+  left_join(ro, by = c("BFREGOFF"))
+
+certifications.all <- certifications %>%
+  count(caseflow, month) %>%
+  group_by(month) %>%
+  mutate(total = sum(n)) %>%
+  ungroup() %>%
+  filter(!caseflow) %>%
+  mutate(rate = (total - n) / total)
+
+dva_theme <- theme_light() +
+  theme(
+    panel.border = element_blank(),
+    text = element_text(family = "Source Sans Pro"),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(color = "black")
+  )
+
+ggplot(certifications.all, aes(x = month, y = rate, group = 1)) +
+  scale_y_continuous(limits = c(0, 1), labels = percent) +
+  geom_line(color = "#0F2D52", size = 1) +
+  geom_point(data = certifications.all[nrow(certifications.all),], color = "#0F2D52", size = 2) +
+  dva_theme
+
+certifications.all %>% transmute(Month = format(month, "%b %Y"), Usage = percent(rate)) %>% kable()
+```
+
+### Eligible (paperless) appeals
+
+```{r}
+certifications.eligible <- certifications %>%
+  filter(TIVBMS == "Y") %>%
+  count(caseflow, month) %>%
+  group_by(month) %>%
+  mutate(total = sum(n)) %>%
+  ungroup() %>%
+  filter(!caseflow) %>%
+  mutate(rate = (total - n) / total)
+
+ggplot(certifications.eligible, aes(x = month, y = rate, group = 1)) +
+  scale_y_continuous(limits = c(0, 1), labels = percent) +
+  geom_line(color = "#0F2D52", size = 1) +
+  geom_point(data = certifications.eligible[nrow(certifications.eligible),], color = "#0F2D52", size = 2) +
+  dva_theme
+
+certifications.eligible %>% transmute(Month = format(month, "%b %Y"), Usage = percent(rate)) %>% kable()
+```
+
+### Usage by regional office (eligible cases)
+
+```{r}
+certifications.eligible_by_ro <- certifications %>%
+  filter(TIVBMS == "Y") %>%
+  count(caseflow, month, RO) %>%
+  group_by(month, RO) %>%
+  mutate(total = sum(n)) %>%
+  ungroup() %>%
+  filter(!caseflow) %>%
+  group_by(RO) %>%
+  filter(n() == length(unique(certifications$month))) %>%
+  ungroup() %>%
+  mutate(rate = (total - n) / total)
+
+ggplot(certifications.eligible_by_ro, aes(x = month, y = rate, group = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = c(0, 0.5, 1), labels = percent) +
+  geom_line(color = "#0F2D52") +
+  dva_theme +
+  theme(axis.text.x=element_blank()) +
+  facet_wrap(~RO)
+
+certifications.eligible_by_ro %>% filter(month == max(certifications$month)) %>% arrange(desc(rate)) %>% transmute(RO, Usage = percent(rate)) %>% kable()
+```

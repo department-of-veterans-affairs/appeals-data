@@ -6,7 +6,7 @@ output:
 ---
 
 ```{r include = FALSE}
-source("../R/vacolsConnect.R")
+source("../../R/vacolsConnect.R")
 library("dplyr")
 library("tidyr")
 library("knitr")
@@ -22,9 +22,9 @@ There are two primary divisions to understand about this process. The first is b
 
 ## Status
 
-**In Progress**
+**Archived**
 
-We have conducted an initial analysis, and are following up by sharing potential missing cases with officials who will be able to identify if there is a reason for a case to lack an EP. This research will inform future iterations of this analysis, and could lead to the development of a routine set of reports analagous to those in use for the "frontend seam."
+This analysis informed discovery related to the Caseflow Dispatch product, which aims to ensure that an EP is created for every claim. Subsequent updates will look at ensuring that every decision has a matching EP and at reducing the time to EP creation, particularly for the long tail of claims.
 
 ## Analysis
 
@@ -41,9 +41,12 @@ vacols_decisions <- dbGetQuery(con, "
     BFREGOFF,
     BFAC,
     BFDC,
+    BFCURLOC,
+    BFDLOOUT,
     LOCSTTO as EPLOC,
     VACOLS.ISSUE_CNT_ALLOWED(bfkey) as ALLOWED,
-    VACOLS.ISSUE_CNT_REMAND(bfkey) as REMANDED
+    VACOLS.ISSUE_CNT_REMAND(bfkey) as REMANDED,
+    VACOLS.DIARY_CNT_OPEN(bfkey) as DIARY_CNT
 
   from BRIEFF
 
@@ -83,11 +86,11 @@ We then fetch from BGS any EP-related claims that exist for the uniqued set of V
 # Doesn't work because bundler, gemfile contents not installed
 # claims <- system("ruby ./ruby/claims_for_bfcorlid.rb", intern = TRUE, input = unique(decisions$BFCORLID))
 
-write.table(unique(vacols_decisions$BFCORLID), "../tmp/cases.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
+write.table(unique(vacols_decisions$BFCORLID), "../../sensitive_data/cases.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
 # Run the ruby script manually
 
-claims <- read.csv("../tmp/claims.csv", stringsAsFactors = FALSE)
+claims <- read.csv("../../sensitive_data/claims.csv", stringsAsFactors = FALSE)
 ```
 
 ---
@@ -202,7 +205,7 @@ We can generate reports of cases that are worth looking into. These reports are 
 
 ```{r}
 potentially_missing_eps <- filter(no_ep_decisions,
-                                  BFMPRO != "HIS" | disposition == "Full Grant")
+                                  (BFMPRO != "HIS" & DIARY_CNT == 0 & BFCURLOC != "96") | disposition == "Full Grant")
 table(potentially_missing_eps$disposition)
 
 potentially_missing_remands <- filter(potentially_missing_eps, disposition != "Full Grant")

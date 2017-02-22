@@ -26,6 +26,10 @@ ep_codes = %w(
   172GRANT
   172BVAG
   172BVAGPMC
+  400CORRC
+  400CORRCPMC
+  930RC
+  930RCPMC
 )
 
 col_names = %w(

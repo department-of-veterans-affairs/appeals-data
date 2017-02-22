@@ -8,4 +8,8 @@ man
 rd2.pdf
 
 scratchpad.R
-tmp
+
+fig
+output
+sensitive_data
+sensitive_output
