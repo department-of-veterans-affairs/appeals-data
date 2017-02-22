@@ -1,5 +1,9 @@
 ## How long does it take between activation and case review, and how has that changed over time?
 
+source("R/vacolsConnect.R")
+library("dplyr")
+library("ggplot2")
+
 activation.control <- query("select BFKEY, BF41STAT, TIDRECV, TIDKTIME from BRIEFF join FOLDER on BFKEY = TICKNUM where BFAC = '1' and BFHR = '5' and TIVBMS = 'Y' and TIDKTIME >= date '2016-01-01' and TIDKTIME < date '2016-04-01' and BFDCERTOOL is null")
 activation.caseflow <- query("select BFKEY, BF41STAT, TIDRECV, TIDKTIME from BRIEFF join FOLDER on BFKEY = TICKNUM where BFAC = '1' and BFHR = '5' and TIVBMS = 'Y' and TIDKTIME >= date '2016-10-01' and TIDKTIME < date '2017-01-01' and BFDCERTOOL is not null")
 

@@ -1,5 +1,9 @@
 ## What effect does a hearing have on whether an issue is allowed/remanded?
 
+source("R/vacolsConnect.R")
+library("dplyr")
+library("ggplot2")
+
 issues <- query("
 select
   ISSUES.ISSKEY,
