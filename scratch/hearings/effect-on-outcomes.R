@@ -72,6 +72,7 @@ left join HEARSCHED
   on ISSUES.ISSKEY = HEARSCHED.FOLDER_NR
   and HEARSCHED.HEARING_TYPE in ('C', 'T', 'V')
   and HEARSCHED.HEARING_DISP = 'H'
+  and HEARSCHED.HEARING_DATE < BRIEFF.BFDDEC
 
 where BRIEFF.BFDDEC >= date '2015-10-01'
   and BRIEFF.BFDDEC < date '2016-10-01'
@@ -151,3 +152,10 @@ qplot(
   alpha = total_n,
   data = issues.by_disposition
 )
+
+plot(issues.by_disposition$total_allowed_rate, issues.by_disposition$hearing_expected_allowed_rate - issues.by_disposition$nonhearing_expected_allowed_rate)
+abline(h=weighted.mean(issues.by_disposition$hearing_allowed_rate, issues.by_disposition$total_n) - weighted.mean(issues.by_disposition$nonhearing_allowed_rate, issues.by_disposition$total_n))
+abline(h=result$fit[1] - result$fit[2])
+abline(v=mean_total_allowed_rate)
+
+
