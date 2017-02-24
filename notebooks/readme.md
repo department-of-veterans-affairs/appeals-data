@@ -12,3 +12,4 @@
 * [Dispatch: Time to Claim Establishment (Creation of End Product in VBMS)](https://department-of-veterans-affairs.github.io/appeals-data/notebooks/dispatch/time-to-ep.nb.html)
 
 ## Other
+* [Remand Return Rate](https://department-of-veterans-affairs.github.io/appeals-data/notebooks/other/remand-return.nb.html)

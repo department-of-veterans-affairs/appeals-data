@@ -1,0 +1,79 @@
+---
+title: "Remand Return Rate"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r include = FALSE}
+source("../../R/vacolsConnect.R")
+library(dplyr)
+library(survival)
+library(knitr)
+
+con <- vacolsConnect()
+```
+
+## Objective
+
+In order to accurately model Board caseload, we must estimate the percentage of remanded decisions that can be expected to return to the Board, as opposed to being granted or withdrawn in the field.
+
+## Status
+
+**Completed**
+
+Updated 02/24/17.
+
+## Analysis
+
+In order to account for the multiple years that it can take for a remand to be worked, we employ survival analysis to create a sliding estimate of remand return rate. Return to the Board counts as "death" for the purposes of this analysis. Our data is right-censored and left-truncated. We look only at cases that were active during the last year, and cases that predate this period are only counted for their exposure during this window.
+
+The result estimates the percentage of cases that are expected to remain "alive," or unreturned, by time elapsed since decision date. Thus we can estimate for an arbitrary time post-decision this rate and its inverse, the percentage of cases that will have returned.
+
+We find that this survival function is effectively level by decision date +8 years, and so we use this point to estimate the total percentage of cases that will ever return to the Board. In addition to looking at the overall rate of return, we also examine original cases and post-remand cases specifically, and find that a case having already been remanded increases the likelihood that on subsequent remand it will return to the Board, as opposed to being granted or withdrawn in the field.
+
+Note that this analysis is limited to cases decided on or after October 1, 2006.
+
+```{r}
+con <- vacolsConnect()
+query <- function (query) { return(dbGetQuery(con, query)) }
+
+remands <- query("select BFCORLID, BFKEY, BFAC, BFDDEC from BRIEFF where BFDDEC >= date '2006-10-01' and BFDC between '1' and '9' and vacols.issue_cnt_remand(BFKEY) > 0 and BFAC in ('1', '3')")
+returns <- query("select BFCORLID, BFKEY, BFDPDCN, TIDKTIME from BRIEFF join FOLDER on BFKEY = TICKNUM where BFDPDCN >= date '2006-10-01' and BFAC = '3' and (BFDC between '1' and '9' or BFDC is null)")
+
+joined <- remands %>%
+  left_join(returns, by = c("BFCORLID", "BFDDEC" = "BFDPDCN")) %>%
+  mutate(
+    BFDDEC = as.Date(BFDDEC),
+    TIDKTIME = as.Date(TIDKTIME),
+    age.enter = pmax(0, as.numeric((Sys.Date() - 365) - BFDDEC)),
+    age.exit = as.numeric(ifelse(is.na(TIDKTIME), Sys.Date() - BFDDEC, TIDKTIME - BFDDEC)),
+    status = !is.na(TIDKTIME)
+  ) %>%
+  filter(age.exit > age.enter, is.na(TIDKTIME) | TIDKTIME >= Sys.Date() - 365)
+
+fit <- survfit(Surv(age.enter, age.exit, status) ~ 1, se.fit = T, data = joined)
+fit.originals <- survfit(Surv(age.enter, age.exit, status) ~ 1, se.fit = T, data = subset(joined, BFAC == "1"))
+fit.remands <- survfit(Surv(age.enter, age.exit, status) ~ 1, se.fit = T, data = subset(joined, BFAC == "3"))
+
+fit$X8years <- summary(fit, times = 8 * 365 + 2)
+fit.originals$X8years <- summary(fit.originals, times = 8 * 365 + 2)
+fit.remands$X8years <- summary(fit.remands, times = 8 * 365 + 2)
+```
+
+### Eight-year remand return rate
+
+```{r}
+data.frame(Data = c("All cases", "Original cases", "Post-remand cases"), surv = c(fit$X8years$surv, fit.originals$X8years$surv, fit.remands$X8years$surv), std.err = c(fit$X8years$std.err, fit.originals$X8years$std.err, fit.remands$X8years$std.err)) %>%
+  mutate(Rate = paste0(round((1 - surv) * 100, digits = 2), "% ±", round(std.err * 196, digits = 2))) %>%
+  select(Data, Rate) %>%
+  kable()
+```
+
+### Survival curves
+
+```{r}
+plot(fit, xlab = "Days elapsed since decision", ylab = "Percent of remands outstanding", main = "Remand return rate (all decisions)")
+plot(fit.originals, xlab = "Days elapsed since decision", ylab = "Percent of remands outstanding", main = "Remand return rate (original cases)")
+plot(fit.remands, xlab = "Days elapsed since decision", ylab = "Percent of remands outstanding", main = "Remand return rate (post-remand cases)")
+```
