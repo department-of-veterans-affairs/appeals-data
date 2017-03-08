@@ -2,6 +2,13 @@
 
 source("R/vacolsConnect.R")
 library(dplyr)
+library(magrittr)
+library(lme4)
+library(modelr)
+library(purrr)
+library(psych)
+library(sjstats)
+library(pROC)
 library(ggplot2)
 
 con <- vacolsConnect()
@@ -39,7 +46,8 @@ select
       VFTYPES.FTDESC else ISSREF.LEV3_DESC
     end
   end ISSLEV3_LABEL,
-  case when HEARSCHED.HEARING_DISP is not null then 1 else 0 end HEARING
+  case when HEARSCHED.HEARING_DISP is not null then 1 else 0 end HEARING,
+  HEARSCHED.HEARING_TYPE
 
 from ISSUES
 
@@ -80,9 +88,75 @@ where BRIEFF.BFDDEC >= date '2015-10-01'
   and ISSUES.ISSDC in ('1', '3', '4')
   and BRIEFF.BFAC = '1'
   and ISSUES.ISSPROG = '02'
-")
+") %>%
+  mutate(
+    hearing_typef = factor(ifelse(HEARING == 0, "none", ifelse(HEARING_TYPE == "V", "video", "in-person")), c("none", "video", "in-person")),
+    age_at_form9 = as.numeric(as.Date(BFD19) - as.Date(SDOB)) / 365,
+    private_attorney = as.numeric(BFSO == 'T'),
+    rep = as.factor(BFSO)
+  )
 
-issues.by_disposition <- issues %>%
+issues$issue_type <- as.factor(group_indices(issues, ISSPROG, ISSCODE, ISSLEV1, ISSLEV2, ISSLEV3))
+
+m1 <- glmer(ISSDC == '1' ~ HEARING + (HEARING || issue_type), data = issues, family = binomial, control=glmerControl(optimizer="bobyqa"))
+issues$exp <- predict(m1, issues, type = "response")
+issues$exp_no_hearing <- predict(m1, data.frame(issue_type = issues$issue_type, HEARING = 0), type = "response")
+issues$exp_hearing <- predict(m1, data.frame(issue_type = issues$issue_type, HEARING = 1), type = "response")
+
+obs_hearing_diff <- sum(issues$ISSDC == "1" & issues$HEARING) / sum(issues$HEARING) - sum(issues$ISSDC == "1" & !issues$HEARING) / sum(!issues$HEARING)
+median_hearing_diff <- (sum(issues$exp_hearing) - sum(issues$exp_no_hearing)) / nrow(issues)
+
+sum(issues$exp_hearing) / nrow(issues)
+sum(issues$exp_no_hearing) / nrow(issues)
+
+m.null <- glmer(ISSDC == '1' ~ 1 | issue_type, data = issues, family = binomial, control=glmerControl(optimizer="bobyqa"))
+icc(m.null)
+
+ci.wald <- confint(m1, method="Wald")
+
+
+set.seed(3317)
+b_par <- bootMer(m1, fixef, nsim = 50)
+ci.bootstrap <- boot.ci(b_par, type = "perc", index = 2)
+
+hearing.coef <- m1@beta[2]
+hearing.ci <- ci.bootstrap$percent[1, 4:5]
+hearing.ci_diff <- hearing.ci - hearing.coef
+
+issues %<>%
+  mutate(
+    exp_hearing.logit = log(exp_hearing / (1 - exp_hearing)),
+    exp_hearing.l.logit = exp_hearing.logit + hearing.ci_diff[1],
+    exp_hearing.u.logit = exp_hearing.logit + hearing.ci_diff[2],
+    exp_hearing.l = exp(exp_hearing.l.logit) / (1 + exp(exp_hearing.l.logit)),
+    exp_hearing.u = exp(exp_hearing.u.logit) / (1 + exp(exp_hearing.u.logit))
+  )
+
+median_hearing_diff.l <- (sum(issues$exp_hearing.l) - sum(issues$exp_no_hearing)) / nrow(issues)
+median_hearing_diff.u <- (sum(issues$exp_hearing.u) - sum(issues$exp_no_hearing)) / nrow(issues)
+
+set.seed(3317)
+cv <- crossv_kfold(issues, k = 5) %>%
+  mutate(
+    models = map(train, ~ glmer(formula(m1), data = ., family = binomial, control=glmerControl(optimizer="bobyqa")))
+  ) %>%
+  mutate(
+    accuracy = map_dbl(models, ~ auc(roc(response = resp_val(.x), predictor = predict(.x, model.frame(.x)))))
+  )
+
+cv.null <- crossv_kfold(issues, k = 5) %>%
+  mutate(
+    models = map(train, ~ glmer(formula(m.null), data = ., family = binomial, control=glmerControl(optimizer="bobyqa")))
+  ) %>%
+  mutate(
+    accuracy = map_dbl(models, ~ auc(roc(response = resp_val(.x), predictor = predict(.x, model.frame(.x)))))
+  )
+
+mean(cv$accuracy)
+mean(cv.null$accuracy)
+
+
+issues.by_type <- issues %>%
   select(-ISSKEY, -SDOB, -BFSO, -BFD19, -BFDDEC, -ISSSEQ, -ISSDESC) %>%
   group_by(ISSPROG, ISSCODE, ISSLEV1, ISSLEV2, ISSLEV3, ISSPROG_LABEL, ISSCODE_LABEL, ISSLEV1_LABEL, ISSLEV2_LABEL, ISSLEV3_LABEL) %>%
   summarize(
@@ -108,54 +182,9 @@ issues.by_disposition <- issues %>%
     nonhearing_remanded_rate = nonhearing_remanded / nonhearing_n,
     diff_allowed_rate = hearing_allowed_rate - nonhearing_allowed_rate,
     diff_remanded_rate = hearing_remanded_rate - nonhearing_remanded_rate,
-    ratio_allowed_rate = hearing_allowed_rate / nonhearing_allowed_rate,
-    ratio_remanded_rate = hearing_remanded_rate / nonhearing_remanded_rate,
     logit_allowed_rate = log(total_allowed_rate / (1 - total_allowed_rate)),
     logit_remanded_rate = log(total_remanded_rate / (1 - total_remanded_rate))
   )
 
-weighted.mean(issues.by_disposition$nonhearing_allowed_rate, issues.by_disposition$total_n)
-weighted.mean(issues.by_disposition$hearing_allowed_rate, issues.by_disposition$total_n)
-weighted.mean(issues.by_disposition$nonhearing_remanded_rate, issues.by_disposition$total_n)
-weighted.mean(issues.by_disposition$hearing_remanded_rate, issues.by_disposition$total_n)
-
-issues.with_rates <- issues.by_disposition %>%
-  select(ISSPROG, ISSCODE, ISSLEV1, ISSLEV2, ISSLEV3, logit_allowed_rate, logit_remanded_rate) %>%
-  right_join(issues, by = c("ISSPROG", "ISSCODE", "ISSLEV1", "ISSLEV2", "ISSLEV3")) %>%
-  mutate(
-    age_at_form9 = as.numeric(as.Date(BFD19) - as.Date(SDOB)) / 365,
-    private_attorney = BFSO == 'T',
-    rep = as.factor(BFSO)
-  )
-
-qplot(data = issues.by_disposition, x = total_n, y = log(ratio_allowed_rate))
-
-m1 <- glm(ISSDC == '1' ~ HEARING + logit_allowed_rate, family=binomial, data=issues.with_rates)
-
-mean_total_allowed_rate <- weighted.mean(issues.by_disposition$total_allowed_rate, issues.by_disposition$total_n)
-mean_logit_allowed_rate <- log(mean_total_allowed_rate / (1 - mean_total_allowed_rate))
-mean_total_remanded_rate <- weighted.mean(issues.by_disposition$total_remanded_rate, issues.by_disposition$total_n)
-mean_logit_remanded_rate <- log(mean_total_remanded_rate / (1 - mean_total_remanded_rate))
-
-result <- predict(m1, data.frame(HEARING = c(1, 0), logit_allowed_rate = mean_logit_allowed_rate), type = "response", se.fit = TRUE)
-
-paste0("Change in allowance rate: ", result$fit[1] - result$fit[2])
-paste0("CI: ", sqrt(result$se.fit[1]^2 + result$se.fit[2]^2) * 1.96)
-
-issues.by_disposition$nonhearing_expected_allowed_rate <- predict(m1, data.frame(HEARING = 0, logit_allowed_rate = issues.by_disposition$logit_allowed_rate), type = "response")
-issues.by_disposition$hearing_expected_allowed_rate <- predict(m1, data.frame(HEARING = 1, logit_allowed_rate = issues.by_disposition$logit_allowed_rate), type = "response")
-
-qplot(total_allowed_rate, hearing_expected_allowed_rate - nonhearing_expected_allowed_rate, data = issues.by_disposition)
-qplot(
-  x = total_allowed_rate,
-  y = (hearing_expected_allowed_rate - nonhearing_expected_allowed_rate) - (hearing_allowed_rate - nonhearing_allowed_rate),
-  alpha = total_n,
-  data = issues.by_disposition
-)
-
-plot(issues.by_disposition$total_allowed_rate, issues.by_disposition$hearing_expected_allowed_rate - issues.by_disposition$nonhearing_expected_allowed_rate)
-abline(h=weighted.mean(issues.by_disposition$hearing_allowed_rate, issues.by_disposition$total_n) - weighted.mean(issues.by_disposition$nonhearing_allowed_rate, issues.by_disposition$total_n))
-abline(h=result$fit[1] - result$fit[2])
-abline(v=mean_total_allowed_rate)
-
-
+qplot(data = issues.by_type, x = total_n, y = diff_allowed_rate)
+qplot(data = issues.by_type, x = total_allowed_rate, y = diff_allowed_rate, alpha = total_n)
