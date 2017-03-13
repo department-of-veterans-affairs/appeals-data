@@ -1,0 +1,127 @@
+---
+title: "Form 8 Changes"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r include = FALSE}
+source("../../R/caseflowConnect.R")
+library(dplyr)
+library(tidyr)
+library(scales)
+library(knitr)
+
+con <- caseflowConnect()
+query <- function (query) { return(dbGetQuery(con, query)) }
+```
+
+## Objective
+
+What fields on the Form 8 are ROs changing from the defaults?
+
+## Status
+
+**In Progress**
+
+Updated: 3/13/17
+
+## Analysis
+
+Looking at all...
+
+```{r}
+form8s <- query("
+select
+  FORM8S.VACOLS_ID,
+  APPELLANT_NAME, _INITIAL_APPELLANT_NAME,
+  APPELLANT_RELATIONSHIP, _INITIAL_APPELLANT_RELATIONSHIP,
+  VETERAN_NAME, _INITIAL_VETERAN_NAME,
+  INSURANCE_LOAN_NUMBER, _INITIAL_INSURANCE_LOAN_NUMBER,
+  SERVICE_CONNECTION_NOTIFICATION_DATE, _INITIAL_SERVICE_CONNECTION_NOTIFICATION_DATE,
+  INCREASED_RATING_NOTIFICATION_DATE, _INITIAL_INCREASED_RATING_NOTIFICATION_DATE,
+  OTHER_NOTIFICATION_DATE, _INITIAL_OTHER_NOTIFICATION_DATE,
+  REPRESENTATIVE_NAME, _INITIAL_REPRESENTATIVE_NAME,
+  REPRESENTATIVE_TYPE, _INITIAL_REPRESENTATIVE_TYPE,
+  HEARING_REQUESTED, _INITIAL_HEARING_REQUESTED,
+  SSOC_REQUIRED, _INITIAL_SSOC_REQUIRED
+
+from FORM8S
+
+join (select CERTIFICATION_ID ID, max(CREATED_AT) DATE from FORM8S group by CERTIFICATION_ID) LAST
+  on CERTIFICATION_ID = LAST.ID
+  and CREATED_AT = LAST.DATE
+
+join CERTIFICATIONS
+  on CERTIFICATION_ID = CERTIFICATIONS.ID
+
+where FORM8S.VACOLS_ID is not null
+  and CERTIFICATIONS.COMPLETED_AT is not null
+")
+
+fields <- form8s %>%
+  mutate_all(as.character) %>%
+  gather(key, value, -vacols_id) %>%
+  mutate(col = ifelse(grepl("_initial_", key), "initial", "final"), key = gsub("_initial_", "", key)) %>%
+  replace_na(list(value = "NULL")) %>%
+  spread(col, value) %>%
+  mutate(changed = initial != final)
+
+nrow(form8s)
+```
+
+...Caseflow cases that have been certified since Certification began tracking changes to the Form 8 (~December 2016), which fields were most frequently changed? In the case where a certification has multiple associated Form 8s (which can happen if 48 hours elapses after a Form 8 is started), we use the values of the most recent one. The following is a table of each field, where FALSE indicates that the default was unchanged, and TRUE indicates that the field was edited.
+
+```{r}
+table(fields$key, fields$changed) %>% prop.table(1) %>% round(3) %>% kable()
+```
+
+### Appellant Name
+
+Virtually all of these changes are entering an appellant when VACOLS had none. The percentage of changed fields where this was the case is:
+
+```{r}
+percent(sum(fields$key == "appellant_name" & fields$changed == TRUE & fields$initial == "NULL") / sum(fields$key == "appellant_name" & fields$changed == TRUE))
+```
+
+In addition, most of the remaining changes were to remove the appellant. Note that these appear as an empty string instead of a null value. The percentage of changed fields where this was the case is:
+
+```{r}
+percent(sum(fields$key == "appellant_name" & fields$changed == TRUE & fields$final == "") / sum(fields$key == "appellant_name" & fields$changed == TRUE))
+```
+
+### Hearing Requested
+
+In all but one instance, the hearing requested field started as "No," so these changes are all changing "No" to "Yes". This is the most frequent change on the Form 8.
+
+### Insurance Loan Number
+
+The insurance loan number field always started as blank, so this was the first time this information was entered.
+
+### Representative Name/Type
+
+The following table shows the starting values of the representative name field when it was changed.
+
+```{r}
+table(fields$initial[fields$key == "representative_name" & fields$changed == TRUE])
+```
+
+Apart from those instances where the field was blank (more than 2/3rds of the changes), the most common change to representative name was when the default was "State Service Organization(s)," and the changes specified the particular SSO (with various formats and typos). "State Service Organization(s)" was changed...
+
+```{r}
+percent(sum(fields$key == "representative_name" & fields$changed == TRUE & fields$initial == "State Service Organization(s)") / sum(fields$key == "representative_name" & fields$initial == "State Service Organization(s)"))
+```
+
+...of the time. 
+
+Representative type is changed less frequently. The following table shows the starting values of the representative type field when it was changed:
+
+```{r}
+table(fields$initial[fields$key == "representative_type" & fields$changed == TRUE])
+```
+
+When representative type was changed from "Organization," these were the final values selected by the certifying official:
+
+```{r}
+table(fields$final[fields$key == "representative_type" & fields$changed == TRUE & fields$initial == "Organization"])
+```

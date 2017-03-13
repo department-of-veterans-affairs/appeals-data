@@ -2,6 +2,7 @@
 
 ## Intake
 * [Caseflow Certification Usage](https://department-of-veterans-affairs.github.io/appeals-data/notebooks/intake/certification-usage.nb.html)
+* [Form 8 Changes](https://department-of-veterans-affairs.github.io/appeals-data/notebooks/intake/form8-changes.nb.html)
 
 ## Hearings
 

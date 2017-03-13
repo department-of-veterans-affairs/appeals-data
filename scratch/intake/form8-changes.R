@@ -2,7 +2,7 @@
 
 source("R/caseflowConnect.R")
 library(dplyr)
-library(ggplot2)
+library(tidyr)
 
 con <- caseflowConnect()
 query <- function (query) { return(dbGetQuery(con, query)) }
@@ -48,10 +48,15 @@ round(prop.table(table(fields$key, fields$changed), 1), 2)
 
 table(fields$key[fields$changed == TRUE & fields$initial == "NULL"])
 
+table(fields$initial[fields$key == "appellant_name" & fields$changed == TRUE & fields$initial != "NULL"])
+table(fields$final[fields$key == "appellant_name" & fields$changed == TRUE & fields$initial != "NULL"])
+
 table(fields$initial[fields$key == "hearing_requested" & fields$changed == TRUE])
 table(fields$initial[fields$key == "hearing_requested"])
 
 table(fields$initial[fields$key == "representative_name" & fields$changed == TRUE])
+table(fields$final[fields$key == "representative_name" & fields$changed == TRUE & fields$initial == "State Service Organization(s)"])
+sum(fields$key == "representative_name" & fields$changed == TRUE & fields$initial == "State Service Organization(s)") / sum(fields$key == "representative_name" & fields$initial == "State Service Organization(s)")
 
 table(fields$initial[fields$key == "representative_type" & fields$changed == TRUE])
 table(fields$final[fields$key == "representative_type" & fields$changed == TRUE & fields$initial == "Organization"])
