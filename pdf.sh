@@ -1,0 +1,1 @@
+R CMD Rd2pdf --title='VACOLS' -o vacols.pdf man/*.Rd
