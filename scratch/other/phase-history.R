@@ -227,4 +227,6 @@ issues <- query("
 issues <- logical_case_ids %>%
   inner_join(issues, by = c("BFKEY"))
 
+# remands are one-to-many, and need to be broken out into their own dataframe.
+
 

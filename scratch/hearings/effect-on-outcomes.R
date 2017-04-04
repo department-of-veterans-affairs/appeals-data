@@ -7,6 +7,7 @@ library(lme4)
 library(modelr)
 library(purrr)
 library(psych)
+library(boot)
 library(sjstats)
 library(pROC)
 library(ggplot2)
@@ -46,8 +47,7 @@ select
       VFTYPES.FTDESC else ISSREF.LEV3_DESC
     end
   end ISSLEV3_LABEL,
-  case when HEARSCHED.HEARING_DISP is not null then 1 else 0 end HEARING,
-  HEARSCHED.HEARING_TYPE
+  case when HEARSCHED.HEARING_DISP is not null then 1 else 0 end HEARING
 
 from ISSUES
 
@@ -76,11 +76,13 @@ inner join BRIEFF
 inner join CORRES
   on BRIEFF.BFCORKEY = CORRES.STAFKEY
 
-left join HEARSCHED
-  on ISSUES.ISSKEY = HEARSCHED.FOLDER_NR
-  and HEARSCHED.HEARING_TYPE in ('C', 'T', 'V')
-  and HEARSCHED.HEARING_DISP = 'H'
-  and HEARSCHED.HEARING_DATE < BRIEFF.BFDDEC
+left join (
+    select distinct FOLDER_NR, HEARING_DISP
+    from HEARSCHED
+    where HEARING_DISP = 'H'
+      and HEARING_TYPE in ('C', 'T', 'V')
+  ) HEARSCHED on
+    BFKEY = FOLDER_NR
 
 where BRIEFF.BFDDEC >= date '2015-10-01'
   and BRIEFF.BFDDEC < date '2016-10-01'
@@ -90,7 +92,6 @@ where BRIEFF.BFDDEC >= date '2015-10-01'
   and ISSUES.ISSPROG = '02'
 ") %>%
   mutate(
-    hearing_typef = factor(ifelse(HEARING == 0, "none", ifelse(HEARING_TYPE == "V", "video", "in-person")), c("none", "video", "in-person")),
     age_at_form9 = as.numeric(as.Date(BFD19) - as.Date(SDOB)) / 365,
     private_attorney = as.numeric(BFSO == 'T'),
     rep = as.factor(BFSO)
