@@ -17,7 +17,7 @@ con <- vacolsConnect()
 
 ## Objective
 
-Show the share of appeals that are certified using Caseflow. Report run 02/22/17.
+Show the share of appeals that are certified using Caseflow. Report run 04/10/17.
 
 ### All appeals
 
@@ -28,7 +28,7 @@ ro <- read.csv("../../data/ro.csv", stringsAsFactors = FALSE) %>%
 certifications <- dbGetQuery(con, "
   select BF41STAT, BFDCERTOOL, BFREGOFF, TIVBMS
   from BRIEFF join FOLDER on BFKEY = TICKNUM
-  where BF41STAT >= date '2016-01-01' and BF41STAT < date '2017-02-01'
+  where BF41STAT >= date '2016-01-01' and BF41STAT < date '2017-04-01'
   and BFAC = '1'
 ") %>%
   mutate(
@@ -96,7 +96,7 @@ certifications.eligible_by_ro <- certifications %>%
   ungroup() %>%
   filter(!caseflow) %>%
   group_by(RO) %>%
-  filter(n() == length(unique(certifications$month))) %>%
+  filter(n() > 1) %>%
   ungroup() %>%
   mutate(rate = (total - n) / total)
 
