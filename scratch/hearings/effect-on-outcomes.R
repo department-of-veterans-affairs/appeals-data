@@ -157,8 +157,8 @@ mean(cv$accuracy)
 mean(cv.null$accuracy)
 
 
+
 issues.by_type <- issues %>%
-  select(-ISSKEY, -SDOB, -BFSO, -BFD19, -BFDDEC, -ISSSEQ, -ISSDESC) %>%
   group_by(ISSPROG, ISSCODE, ISSLEV1, ISSLEV2, ISSLEV3, ISSPROG_LABEL, ISSCODE_LABEL, ISSLEV1_LABEL, ISSLEV2_LABEL, ISSLEV3_LABEL) %>%
   summarize(
     hearing_n = sum(HEARING == 1),
@@ -169,7 +169,6 @@ issues.by_type <- issues %>%
     nonhearing_remanded = sum(HEARING == 0 & ISSDC == '3')
   ) %>%
   ungroup() %>%
-  filter(hearing_allowed > 0, hearing_remanded > 0, nonhearing_allowed > 0, nonhearing_remanded > 0) %>%
   mutate(
     total_n = hearing_n + nonhearing_n,
     total_allowed = hearing_allowed + nonhearing_allowed,
@@ -186,6 +185,8 @@ issues.by_type <- issues %>%
     logit_allowed_rate = log(total_allowed_rate / (1 - total_allowed_rate)),
     logit_remanded_rate = log(total_remanded_rate / (1 - total_remanded_rate))
   )
+
+write.csv(issues.by_type, "issues.csv", row.names = FALSE)
 
 qplot(data = issues.by_type, x = total_n, y = diff_allowed_rate)
 qplot(data = issues.by_type, x = total_allowed_rate, y = diff_allowed_rate, alpha = total_n)
