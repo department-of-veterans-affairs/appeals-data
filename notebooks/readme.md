@@ -5,6 +5,7 @@
 * [Form 8 Changes](https://department-of-veterans-affairs.github.io/appeals-data/notebooks/intake/form8-changes.nb.html)
 
 ## Hearings
+* [Effect of Hearings on Appeal Outcomes](https://department-of-veterans-affairs.github.io/appeals-data/notebooks/hearings/effect-on-outcomes.nb.html)
 
 ## Decisions
 

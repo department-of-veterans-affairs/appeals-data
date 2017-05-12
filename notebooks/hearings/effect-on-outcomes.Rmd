@@ -1,0 +1,349 @@
+---
+title: "Effect of Hearings on Appeal Outcomes"
+output: 
+  html_notebook: 
+    code_folding: hide
+---
+
+```{r include = FALSE}
+source("../../R/vacolsConnect.R")
+library(lme4)
+library(boot)
+library(sjstats)
+library(dplyr)
+library(magrittr)
+library(tidyr)
+library(scales)
+library(ggplot2)
+library(knitr)
+
+con <- vacolsConnect()
+query <- function (query) { return(dbGetQuery(con, query)) }
+```
+
+## Objective
+
+There is a persistent difference in the issue allowance rate of appeals between those with and without hearings. As there are hundreds of unique kinds of issues, many of which occur infrequently, prior analyses have been unable to control for differences in the composition of issues between populations. This analysis models issue type as a random effect in a mixed effects model in order to quantify differences in outcomes on the basis of whether a hearing was held. It further examines differences between the outcomes of different forms of hearings (travel board, videoconference, central office).
+
+## Status
+
+**Draft**
+
+This analysis requires further review and should not be used to inform policy or prescriptive guidance.
+
+TODO: Write up cross validation results.
+
+## Summary
+
+Summary forthcoming.
+
+## Analysis
+
+Veterans with pending appeals have the option to request a hearing with a Veterans Law Judge (VLJ) prior to decision. We hypothesize that hearings may increase the likelihood of a favorable outcome by A. creating the opportunity for the VLJ to advise the Veteran and representative on the appeals process and identify additional evidence that may be valuable, B. establishing appelant credibility on issues where they can provide competent testimony, and/or C. introducing other bias. We acknowledge the possibility that a latent variable may affect both outcomes and preference for a hearing.
+
+An appeal will contain a combination of issues, between two and three in a typical case, although the maximum can be much higher. When studying the impact of exogenous factors such as the presence of a hearing on appeal outcomes, it is useful to treat each issue as an independent observation, rather than attempt to understand the complex interdynamics of issues within the appeal as a whole. Issues are categorized into unique types that number in the thousands, most of which occur only infrequently. Although this classification is imperfect and sometimes combines functionally different contentions, observation suggests that issues of a given type behave similarly, an assumption that will be validated by calculation of an intraclass correlation coefficient below.
+
+In addition to being allowed or denied by a decision of the Board, an issue can be remanded to the Agency of Original Jurisdiction (AOJ) in order to remedy procedural error. Assuming the AOJ does not, in the process of correcting the error, identify a reason to grant the issue, the issue will return to the Board for another decision, which could trigger further remand. Issues that the Board has decided can also be futher appealed to the Court of Appeals for Veterans Claims, which can remand them to the Board. The data does not permit an issue to be linked between each of these remands, and issues can be repeatedly remanded over the course of multiple years, and for these reasons, post-remand issues are discarded from this analysis, leaving only original issues receiving their first decisions. Although it is possible that there are follow-on effects of hearings that appear in subsequent decisions, such effects are beyond the scope of this analysis.
+
+The presence of a hearing is determined by a travel board, videoconference, or central office hearing that was held prior the date of the decision. Canceled hearings, and hearings at which the Veteran did not appear, are not included for the purposes of this analysis. The presence of a hearing is encoded as a binary variable, under the assumption that additional hearings beyond the first do not provide additional marginal benefit.
+
+Finally, this analysis is limited to study of compensation issues, which constitute the vast majority of the Board's caseload.
+
+We retrieve all compensation issues on original decisions made between FY2007 and FY2016. Without making any adjustment for issue type, we arrive at the following observed per-issue allowance rates by year. We see steadily rising allowance rates across both groups, with a persistent delta between the two.
+
+```{r}
+issues <- query("
+select
+  ISSUES.ISSKEY,
+  CORRES.SDOB,
+  BRIEFF.BFSO,
+  BRIEFF.BFD19,
+  BRIEFF.BFDDEC,
+  ISSUES.ISSSEQ,
+  ISSUES.ISSDC,
+  ISSUES.ISSDESC,
+  ISSUES.ISSPROG,
+  ISSUES.ISSCODE,
+  ISSUES.ISSLEV1,
+  ISSUES.ISSLEV2,
+  ISSUES.ISSLEV3,
+  ISSREF.PROG_DESC ISSPROG_LABEL,
+  ISSREF.ISS_DESC ISSCODE_LABEL,
+  case when ISSUES.ISSLEV1 is not null then
+    case when ISSREF.LEV1_CODE = '##' then
+      VFTYPES.FTDESC else ISSREF.LEV1_DESC
+    end
+  end ISSLEV1_LABEL,
+  case when ISSUES.ISSLEV2 is not null then
+    case when ISSREF.LEV2_CODE = '##' then
+      VFTYPES.FTDESC else ISSREF.LEV2_DESC
+    end
+  end ISSLEV2_LABEL,
+  case when ISSUES.ISSLEV3 is not null then
+    case when ISSREF.LEV3_CODE = '##' then
+      VFTYPES.FTDESC else ISSREF.LEV3_DESC
+    end
+  end ISSLEV3_LABEL,
+  HEARSCHED.HEARING_CNT,
+  HEARSCHED.HEARING_C_CNT,
+  HEARSCHED.HEARING_T_CNT,
+  HEARSCHED.HEARING_V_CNT
+
+from ISSUES
+
+inner join ISSREF
+  on ISSUES.ISSPROG = ISSREF.PROG_CODE
+  and ISSUES.ISSCODE = ISSREF.ISS_CODE
+  and (ISSUES.ISSLEV1 is null
+    or ISSREF.LEV1_CODE = '##'
+    or ISSUES.ISSLEV1 = ISSREF.LEV1_CODE)
+  and (ISSUES.ISSLEV2 is null
+    or ISSREF.LEV2_CODE = '##'
+    or ISSUES.ISSLEV2 = ISSREF.LEV2_CODE)
+  and (ISSUES.ISSLEV3 is null
+    or ISSREF.LEV3_CODE = '##'
+    or ISSUES.ISSLEV3 = ISSREF.LEV3_CODE)
+
+left join VFTYPES
+  on VFTYPES.FTTYPE = 'DG'
+  and ((ISSREF.LEV1_CODE = '##' and 'DG' || ISSUES.ISSLEV1 = VFTYPES.FTKEY)
+    or (ISSREF.LEV2_CODE = '##' and 'DG' || ISSUES.ISSLEV2 = VFTYPES.FTKEY)
+    or (ISSREF.LEV3_CODE = '##' and 'DG' || ISSUES.ISSLEV3 = VFTYPES.FTKEY))
+
+inner join BRIEFF
+  on ISSUES.ISSKEY = BRIEFF.BFKEY
+
+inner join CORRES
+  on BRIEFF.BFCORKEY = CORRES.STAFKEY
+
+left join (
+    select FOLDER_NR,
+      min(HEARING_DATE) HEARING_DATE,
+      count(HEARING_DISP) HEARING_CNT,
+      sum(case when HEARING_TYPE = 'C' then 1 else 0 end) HEARING_C_CNT,
+      sum(case when HEARING_TYPE = 'T' then 1 else 0 end) HEARING_T_CNT,
+      sum(case when HEARING_TYPE = 'V' then 1 else 0 end) HEARING_V_CNT
+    from HEARSCHED
+    where HEARING_DISP = 'H'
+      and HEARING_TYPE in ('C', 'T', 'V')
+    group by FOLDER_NR
+  ) HEARSCHED
+    on BRIEFF.BFKEY = HEARSCHED.FOLDER_NR
+      and HEARSCHED.HEARING_DATE < BRIEFF.BFDDEC
+
+where BRIEFF.BFDDEC >= date '2006-10-01'
+  and BRIEFF.BFDDEC < date '2016-10-01'
+  and BRIEFF.BFDC in ('1', '3', '4')
+  and ISSUES.ISSDC in ('1', '3', '4')
+  and BRIEFF.BFAC = '1'
+  and ISSUES.ISSPROG = '02'
+") %>%
+  replace_na(list(HEARING_CNT = 0, HEARING_C_CNT = 0, HEARING_T_CNT = 0, HEARING_V_CNT = 0)) %>%
+  mutate(
+    allowed = ISSDC == '1',
+    remanded = ISSDC == '3',
+    hearing = HEARING_CNT > 0,
+    c_hearing = HEARING_C_CNT > 0,
+    t_hearing = HEARING_T_CNT > 0,
+    v_hearing = HEARING_V_CNT > 0,
+    hearing_type = factor(
+      ifelse(c_hearing & !t_hearing & !v_hearing, 'C',
+        ifelse(!c_hearing & t_hearing & !v_hearing, 'T',
+          ifelse(!c_hearing & !t_hearing & v_hearing, 'V', NA)
+        )
+      ), levels = c('C', 'T', 'V')
+    ),
+    video_hearing = hearing_type == 'V',
+    age_at_form9 = as.numeric(as.Date(BFD19) - as.Date(SDOB)) / 365,
+    representative = as.factor(BFSO),
+    private_attorney = BFSO == 'T',
+    decision_date = as.Date(BFDDEC),
+    fy = (2007:2016)[findInterval(decision_date, seq(as.Date('2006-10-01'), length=10, by='year'))]
+  )
+
+issues$issue_type <- as.factor(group_indices(issues, ISSPROG, ISSCODE, ISSLEV1, ISSLEV2, ISSLEV3))
+
+obs_allow_rate_by_year <- issues %>%
+  group_by(fy) %>%
+  summarize(
+    `Non-hearing` = sum(!hearing & allowed) / sum(!hearing),
+    `All hearing` = sum(hearing & allowed) / sum(hearing),
+    `Central office` = sum(c_hearing & allowed) / sum(c_hearing),
+    `Travel board` = sum(t_hearing & allowed) / sum(t_hearing),
+    `Videoconference` = sum(v_hearing & allowed) / sum(v_hearing)
+  ) %>%
+  gather(key, rate, -fy) %>%
+  mutate(key = factor(key, levels = c('Non-hearing', 'All hearing', 'Central office', 'Travel board', 'Videoconference'))) %>%
+  group_by(key) %>%
+  mutate(last = n() == row_number()) %>%
+  ungroup()
+
+obs_rate_by_year.hearing <- obs_allow_rate_by_year %>% subset(grepl('hearing', key))
+ggplot(data = obs_rate_by_year.hearing, aes(x = fy, y = rate, color = key, label = percent(round(rate, digits = 3)))) +
+  ggtitle('Issue allowance rate by year') +
+  scale_x_continuous(name = 'Fiscal year') +
+  scale_y_continuous(name = 'Rate', labels = percent) +
+  geom_line() +
+  geom_point(data = subset(obs_rate_by_year.hearing, last)) +
+  geom_text(data = subset(obs_rate_by_year.hearing, last), size = 3, vjust = -0.55, show.legend = FALSE) +
+  theme(legend.title = element_blank()) +
+  guides(color = guide_legend(reverse = TRUE))
+```
+
+We can break out the hearing issues by whether they received a travel board, videoconference, or central office hearing.
+
+```{r}
+obs_rate_by_year.by_type <- obs_allow_rate_by_year %>% subset(key != 'All hearing')
+ggplot(data = obs_rate_by_year.by_type, aes(x = fy, y = rate, color = key, label = percent(round(rate, digits = 3)))) +
+  ggtitle('Issue allowance rate by year (by hearing type)') +
+  scale_x_continuous(name = 'Fiscal year') +
+  scale_y_continuous(name = 'Rate', labels = percent) +
+  geom_line() +
+  geom_point(data = subset(obs_rate_by_year.by_type, last)) +
+  geom_text(data = subset(obs_rate_by_year.by_type, last), size = 3, vjust = -0.55, show.legend = FALSE) +
+  theme(legend.title = element_blank()) +
+  guides(color = guide_legend(reverse = TRUE))
+```
+
+In order to understand whether modeling issue type as a random effect in a mixed effects model is useful, we calculate the intraclass correlation coefficient of issue type as it affects the independent variable, whether the issue was allowed. We can see a transition that occurred in FY2010 between an older issue taxonomy and the current one. The older exhibits little cohesion, indicating that it would provide little explanatory power when incorporated into a mixed effects model. However, under the current system, issues of the same type behave similarly, and this fact will enable us to account for differences in the hearing and non-hearing populations. We will use only FY2011 and later, shown in blue.
+
+```{r}
+corr <- data.frame(fy = 2007:2016)
+
+corr$icc <- lapply(corr$fy, function(x) glmer(allowed ~ 1 | issue_type, data = subset(issues, fy == x), family = binomial, control=glmerControl(optimizer="bobyqa")) %>% icc()) %>% as.numeric() %>% unlist()
+
+ggplot(data = corr, aes(x = fy, y = icc, label = round(icc, 3), color = icc > 0.3)) +
+  ggtitle('Intraclass Correlation Coefficient of issue type by year') +
+  scale_x_continuous(name = 'Fiscal year', limits = c(2006.75, 2016.25), breaks = 2007:2016) +
+  scale_y_continuous(name = 'ICC', limits = c(0, 0.4)) +
+  scale_color_manual(values = c('lightsteelblue4', '#00BFC4', '#F8766D'), guide = FALSE) +
+  geom_point(pch = 5) +
+  geom_text(hjust = -0.25, vjust = .45, size = 3)
+
+```
+
+We input each sufficiently cohesive year into a binomial mixed effects model. Attempts to create multi-year models consistently fail to converge, so we are limited to looking at individual years. The hearing indicator variable is used as the fixed effect, with the issue type as the random effect, modeled as having an uncorrelated random intercept and slope. The entire population of issues, both hearing and non-hearing, are then predicted with the hearing indicator held constant in order to estimate a comparable allowance rate for the full population's mix of issue types. 95% confidence intervals for the hearing effect are approximated using the Wald method and applied to the predicted allowance rates; confidence intervals for the intercept are not incorporated.
+
+```{r}
+set.seed(20170402)
+
+by_year <- data.frame(fy = 2011:2016)
+
+for (year in by_year$fy) {
+  .subset = subset(issues, fy == year)
+  .m <- glmer(allowed ~ as.integer(hearing) + (as.integer(hearing) || issue_type), data = .subset, family = binomial, control = glmerControl(optimizer = "bobyqa"))
+  
+  issues$exp[issues$fy == year] <- predict(.m, issues[issues$fy == year,], type = "response")
+  issues$exp_no_hearing[issues$fy == year] <- predict(.m, data.frame(issue_type = issues$issue_type[issues$fy == year], hearing = FALSE), type = "response")
+  issues$exp_hearing[issues$fy == year] <- predict(.m, data.frame(issue_type = issues$issue_type[issues$fy == year], hearing = TRUE), type = "response")
+  
+  .subset = subset(issues, fy == year)
+  
+  .ci.wald <- confint(.m, method="Wald")
+
+  .hearing.coef <- .m@beta[2]
+  .hearing.ci <- .ci.wald[4, 1:2]
+  .hearing.ci_diff <- .hearing.ci - .hearing.coef
+
+  .subset %<>%
+    mutate(
+      exp_hearing.logit = log(exp_hearing / (1 - exp_hearing)),
+      exp_hearing.l.logit = exp_hearing.logit + .hearing.ci_diff[1],
+      exp_hearing.u.logit = exp_hearing.logit + .hearing.ci_diff[2],
+      exp_hearing.l = exp(exp_hearing.l.logit) / (1 + exp(exp_hearing.l.logit)),
+      exp_hearing.u = exp(exp_hearing.u.logit) / (1 + exp(exp_hearing.u.logit))
+    )
+  
+  by_year$baseline[by_year$fy == year] <- sum(.subset$exp_no_hearing) / nrow(.subset)
+  by_year$hearing_rate[by_year$fy == year] <- sum(.subset$exp_hearing) / nrow(.subset)
+  by_year$hearing_rate.l[by_year$fy == year] <- sum(.subset$exp_hearing.l) / nrow(.subset)
+  by_year$hearing_rate.u[by_year$fy == year] <- sum(.subset$exp_hearing.u) / nrow(.subset)
+}
+
+ggplot(by_year, aes(x = fy)) +
+  ggtitle('Estimated effect of hearing by year') +
+  scale_x_continuous(name = 'Fiscal year', limits = c(2011, 2016.5), breaks = 2011:2016) +
+  scale_y_continuous(name = 'Rate', labels = percent) +
+  geom_linerange(aes(ymin = baseline, ymax = hearing_rate), color = 'white', alpha = 0.75, size = 2, show.legend = FALSE) +
+  geom_point(aes(y = baseline, color = 'Baseline')) +
+  geom_text(aes(y = baseline, color = 'Baseline', label = percent(round(baseline, 3))), hjust = -0.25, size = 3, show.legend = FALSE) +
+  geom_linerange(aes(ymin = hearing_rate.l, ymax = hearing_rate.u, color = 'Hearing'), size = 2, show.legend = FALSE) +
+  geom_point(aes(y = hearing_rate), color = 'white') +
+  geom_text(aes(y = hearing_rate, color = 'Hearing', label = percent(round(hearing_rate, 3))), hjust = -0.25, size = 3, show.legend = FALSE) +
+  geom_text(aes(y = (hearing_rate - baseline) / 2 + baseline, label = paste0('+', format(round((hearing_rate - baseline) * 100, 1), nsmall = 1))), hjust = -0.25, size = 3, show.legend = FALSE) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    legend.title = element_blank()
+  ) +
+  guides(color = guide_legend(reverse = TRUE))
+```
+
+We can compare these adjusted rates to the observed rates. The differences between these rates are largely consistent between years, with the adjustment consistently contracting the observed hearing effect, indicating that the mix of issues for appeals that recieve hearings may have slightly higher allowance rates on average.
+
+```{r}
+ggplot(data = obs_rate_by_year.hearing, aes(x = fy, y = rate, color = key, linetype = "Observed")) +
+  ggtitle('Comparison of observed and adjusted rates by year') +
+  scale_x_continuous(name = 'Fiscal year') +
+  scale_y_continuous(name = 'Rate', labels = percent) +
+  scale_linetype_manual(values = c("Adjusted" = "dashed", "Observed" = "solid")) +
+  geom_line() +
+  geom_line(data = by_year, aes(y = hearing_rate, color = "All hearing", linetype = "Adjusted")) +
+  geom_line(data = by_year, aes(y = baseline, color = "Non-hearing", linetype = "Adjusted")) +
+  theme(legend.title = element_blank()) +
+  guides(color = guide_legend(reverse = TRUE), linetype = guide_legend(reverse = TRUE))
+```
+
+We can compare the Wald method of approximating confidence intervals with a parametric bootstrap method for FY2016, and find that the faster Wald method provides a resonable estimate of the confidence interval (note that these are binomial coefficients).
+
+```{r}
+issues.2016 <- subset(issues, fy == 2016)
+m.2016 <- glmer(allowed ~ as.integer(hearing) + (as.integer(hearing) || issue_type), data = issues.2016, family = binomial, control = glmerControl(optimizer = "bobyqa"))
+
+ci.wald <- confint(m.2016, method="Wald")
+set.seed(20170508)
+b_par <- bootMer(m.2016, fixef, nsim = 50)
+ci.bootstrap <- boot.ci(b_par, type = "perc", index = 2)
+
+ci.table <- data.frame(Wald = ci.wald[4, 1:2], Bootstrap = ci.bootstrap$percent[1, 4:5])
+kable(ci.table)
+```
+
+We arrive at the net percentage point difference in the allowance rate between hearing and non-hearing issues for FY2016.
+
+```{r}
+hearing.ci <- ci.wald[4, 1:2] - m.2016@beta[2]
+
+issues.2016 %<>%
+  mutate(
+    exp = predict(m.2016, ., type = "response"),
+    exp_no_hearing = predict(m.2016, data.frame(issue_type = .$issue_type, hearing = FALSE), type = "response"),
+    exp_hearing = predict(m.2016, data.frame(issue_type = .$issue_type, hearing = TRUE), type = "response"),
+    exp_hearing.logit = log(exp_hearing / (1 - exp_hearing)),
+    exp_hearing.l.logit = exp_hearing.logit + hearing.ci[1],
+    exp_hearing.u.logit = exp_hearing.logit + hearing.ci[2],
+    exp_hearing.l = exp(exp_hearing.l.logit) / (1 + exp(exp_hearing.l.logit)),
+    exp_hearing.u = exp(exp_hearing.u.logit) / (1 + exp(exp_hearing.u.logit))
+  )
+
+hearing_effect_size <- (sum(issues.2016$exp_hearing) - sum(issues.2016$exp_no_hearing)) / nrow(issues.2016)
+hearing_effect_size.l <- (sum(issues.2016$exp_hearing.l) - sum(issues.2016$exp_no_hearing)) / nrow(issues.2016)
+hearing_effect_size.u <- (sum(issues.2016$exp_hearing.u) - sum(issues.2016$exp_no_hearing)) / nrow(issues.2016)
+
+matrix(paste0('+', round(c(hearing_effect_size.l, hearing_effect_size, hearing_effect_size.u) * 100, 2)), ncol = 3) %>%
+  kable(col.names = c('2.5 %', '50 %', '97.5 %'))
+```
+
+The summary of the model:
+
+```{r}
+summary(m.2016)
+```
+
+In order to examine whether conducting hearings over videoconference has an effect on outcomes, we can compare travel board and videoconference hearings. These have the advantage of being functionally similar, as both are scheduled and conducted at regional offices. The model is able to converge when run using all years from FY2011 to FY2016, and over this time period, we do not see a statistically significant difference between travel board and videoconference hearings. It is possible to achieve a significant effect for FY2015 at the <0.05 level (binomial coefficient of -0.083, standard error of 0.032); however, no other year, taken individually, shows a significant effect.
+
+```{r}
+issues.ro_hearings <- subset(issues, fy %in% 2011:2016 & hearing_type %in% c("T", "V"))
+m.ro_hearings <- glmer(allowed ~ as.integer(video_hearing) + (as.integer(video_hearing) || issue_type), data = issues.ro_hearings, family = binomial, control = glmerControl(optimizer = "bobyqa"))
+summary(m.ro_hearings)
+```
