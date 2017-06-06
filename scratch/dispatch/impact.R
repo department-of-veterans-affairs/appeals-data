@@ -335,8 +335,8 @@ folders <- data.frame(
 folders$last <- c(rep(FALSE, nrow(folders) - 1), TRUE)
 
 documents <- data.frame(
-  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01")),
-  n = c(125325, 17229, 10224, 76266, 411735, 534069, 672929, 775061)
+  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01")),
+  n = c(125325, 17229, 10224, 76266, 411735, 534069, 672929, 775061, 802036, 853097)
 )
 
 documents$last <- c(rep(FALSE, nrow(documents) - 1), TRUE)

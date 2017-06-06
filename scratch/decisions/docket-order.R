@@ -10,6 +10,98 @@ con <- vacolsConnect()
 query <- function (query) { return(dbGetQuery(con, query)) }
 
 
+remands <- query("
+select
+  BFKEY,
+  BFMPRO,
+  TINUM,
+  BFD19,
+  (case when VACOLS.AOD_CNT(BFKEY) > 0 then 1 else 0 end) as AOD,
+  ENTER_REM,
+  EXIT_REM,
+  CLOSE_REM
+
+from BRIEFF
+
+inner join FOLDER on BFKEY = TICKNUM
+
+inner join (
+  select LOCKEY,
+    min(LOCDOUT) as ENTER_REM
+
+  from PRIORLOC
+
+  where LOCSTTO in ('50', '51', '54', '98')
+
+  group by LOCKEY
+) ENTER on BFKEY = ENTER.LOCKEY
+
+left join (
+  select LOCKEY,
+    max(LOCDOUT) as EXIT_REM
+
+  from PRIORLOC
+
+  where LOCSTTO = '96'
+
+  group by LOCKEY
+) EXIT on BFKEY = EXIT.LOCKEY
+
+left join (
+  select LOCKEY,
+    max(LOCDOUT) as CLOSE_REM
+
+  from PRIORLOC
+
+  where LOCSTTO = '99'
+
+  group by LOCKEY
+) CLOSE on BFKEY = CLOSE.LOCKEY and CLOSE_REM >= ENTER_REM
+
+where BFMPRO in ('REM', 'HIS')
+  and BFAC in ('1', '3')
+  and BFDC in ('1', '3')
+  and VACOLS.ISSUE_CNT_REMAND(BFKEY) > 0
+  and BFDDEC >= date '2007-05-01'
+  and (BFMPRO = 'REM' or CLOSE_REM >= date '2015-05-01' or EXIT_REM >= date '2015-05-01')
+")
+
+remands %>%
+  mutate(BFD19 = as.Date(BFD19), end_date = as.Date(pmin(CLOSE_REM, EXIT_REM)), returned = !is.na(EXIT_REM)) %>%
+  filter(as.Date(ENTER_REM) < as.Date('2017-05-01') & (BFMPRO == 'REM' | end_date >= as.Date('2017-05-01'))) %>%
+  ggplot(aes(x = BFD19, fill = returned)) +
+  scale_x_date(limits = c(as.Date('2002-05-01'), as.Date('2017-05-31'))) +
+  scale_y_continuous(limits = c(0, 600)) +
+  geom_histogram(binwidth = 30)
+
+remands %>%
+  mutate(BFD19 = as.Date(BFD19), end_date = as.Date(pmin(CLOSE_REM, EXIT_REM)), returned = !is.na(EXIT_REM) & as.Date(EXIT_REM) <= as.Date('2015-05-31')) %>%
+  filter(as.Date(ENTER_REM) < as.Date('2015-05-01') & (BFMPRO == 'REM' | end_date >= as.Date('2015-05-01'))) %>%
+  ggplot(aes(x = BFD19, fill = returned)) +
+  scale_x_date(limits = c(as.Date('2002-05-01'), as.Date('2017-05-31'))) +
+  scale_y_continuous(limits = c(0, 600)) +
+  geom_histogram(binwidth = 30)
+
+library(lubridate)
+
+dates <- ymd("2015-05-01") + months(0:(12 * 2))
+
+for (start_date in dates) {
+  start_date <- as_date(start_date)
+  end_date <- as_date(start_date + months(1))
+  remands %>%
+    mutate(BFD19 = as_date(BFD19), close_date = as_date(pmin(CLOSE_REM, EXIT_REM)), returned = !is.na(EXIT_REM) & as_date(EXIT_REM) < end_date & as_date(EXIT_REM) >= start_date) %>%
+    filter(as_date(ENTER_REM) < end_date & (BFMPRO == 'REM' | close_date >= start_date)) %>%
+    ggplot(aes(x = BFD19, fill = returned)) +
+    scale_x_date(limits = c(as_date('2002-05-01'), as_date('2017-05-31'))) +
+    scale_y_continuous(limits = c(0, 600)) +
+    geom_histogram(binwidth = 30) +
+    ggtitle(paste("Pending Remands -", format(as_date(start_date), '%b %Y'))) +
+    labs(x = "Form 9 Date", y = "Number of Pending Remands")
+  ggsave(paste0('remands-', format(as_date(start_date), '%Y-%m-%d'), '.png'))
+}
+
+
 assignments <- query("
 select
   BFKEY,
@@ -105,8 +197,8 @@ inner join (
 ) on BFKEY = DEFOLDER
 
 where BFAC in ('1', '3')
-  and DEASSIGN >= date '2016-04-01'
-  and DEASSIGN < date '2017-04-17'
+  and DEASSIGN >= date '2016-05-01'
+  and DEASSIGN < date '2017-05-31'
 ") %>% mutate(
   AOD = as.logical(AOD),
   HEARING = as.logical(HEARING),
@@ -128,7 +220,7 @@ ggplot(assignments.incl_postrem, aes(x = DEASSIGN, y = age_at_pickup, color = ty
 ggsave('docket-postrem.png', width = 8, height = 8)
 
 ggplot(assignments.incl_postrem, aes(x = DEASSIGN, y = BFD19, color = type)) +
-  scale_y_date(limits = c(as.Date('2009-04-01'), as.Date('2017-04-17'))) +
+  scale_y_date(limits = c(as.Date('2009-04-01'), as.Date('2017-05-31'))) +
   geom_point(alpha = 0.04) +
   guides(color = guide_legend(override.aes = list(alpha = 1)))
 
