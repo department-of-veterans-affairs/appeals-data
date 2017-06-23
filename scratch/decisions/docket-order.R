@@ -101,6 +101,22 @@ for (start_date in dates) {
   ggsave(paste0('remands-', format(as_date(start_date), '%Y-%m-%d'), '.png'))
 }
 
+remands %>%
+    mutate(BFD19 = as_date(BFD19), close_date = as_date(pmin(CLOSE_REM, EXIT_REM)), returned = !is.na(EXIT_REM) & as_date(EXIT_REM) < as_date('2017-05-31') & as_date(EXIT_REM) >= as_date('2017-05-01')) %>%
+    filter(as_date(ENTER_REM) < as_date('2017-05-31') & (BFMPRO == 'REM' | close_date >= as_date('2017-05-01'))) %>%
+    ggplot(aes(x = BFD19, y = as_date(ENTER_REM), color = returned, alpha = returned)) +
+    scale_alpha_manual(values = c(0.025, 0.25)) +
+    scale_x_date(limits = c(as_date('2002-05-01'), as_date('2017-05-31'))) +
+    geom_point() +
+    geom_rug()
+
+remands %>%
+    mutate(BFD19 = as_date(BFD19), close_date = as_date(pmin(CLOSE_REM, EXIT_REM)), returned = !is.na(EXIT_REM) & as_date(EXIT_REM) < as_date('2017-05-31') & as_date(EXIT_REM) >= as_date('2017-05-01')) %>%
+    filter(as_date(ENTER_REM) < as_date('2017-05-31') & (BFMPRO == 'REM' | close_date >= as_date('2017-05-01'))) %>%
+    ggplot(aes(x = as_date(ENTER_REM), fill = returned)) +
+    scale_y_continuous(limits = c(0, 600)) +
+    geom_histogram(binwidth = 30)
+
 
 assignments <- query("
 select
