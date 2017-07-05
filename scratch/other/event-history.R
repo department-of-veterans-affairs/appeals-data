@@ -25,7 +25,7 @@ logical_cases <- dbGetQuery(con, "
 
     from BRIEFF
 
-    where BFDDEC is null or BFDDEC > date '2013-10-01'
+    where BFDDEC is null or BFDDEC > date '2012-10-01'
   )
 
   on BFCORLID = DISTBFCORLID and BFDNOD = DISTBFDNOD
@@ -65,7 +65,7 @@ events <- event_all(con, where = "BFDNOD > date '1990-01-01'", join = "
 
     from BRIEFF
 
-    where BFDDEC is null or BFDDEC > date '2013-10-01'
+    where BFDDEC is null or BFDDEC > date '2012-10-01'
   )
 
   on BFCORLID = DISTBFCORLID and BFDNOD = DISTBFDNOD
@@ -108,7 +108,7 @@ gp_events <- cleaned_events %>%
     "HEARING", "ASSIGNMENT", "SIGNED_DECISION", "OUTCODING", "WITHDRAWN", "GRANT"
   ))
 
-not_remanded_decisions <- dbGetQuery(con, "select BFKEY from BRIEFF where BFDDEC > date '2013-10-01' and ((BFDC = '1' and VACOLS.ISSUE_CNT_REMAND(BFKEY) = 0) or BFDC = '4')") %>%
+not_remanded_decisions <- dbGetQuery(con, "select BFKEY from BRIEFF where BFDDEC > date '2012-10-01' and ((BFDC = '1' and VACOLS.ISSUE_CNT_REMAND(BFKEY) = 0) or BFDC = '4')") %>%
   mutate(not_remanded = TRUE)
 
 gp_events <- left_join(gp_events, not_remanded_decisions, by = c("BFKEY"))
@@ -452,6 +452,47 @@ for (step in steps_to_plot) {
 ggplot(backlogs_by_step[backlogs_by_step$next_step %in% c("ACTIVATION", "CASE_REVIEW"),], aes(x = obs_date, y = n, fill = next_step)) +
   ggtitle("Combined ACTIVATION and CASE_REVIEW backlogs over time (estimated)") +
   geom_area()
+
+ordered_bva_backlogs <- backlogs_by_step %>%
+  mutate(next_step = factor(next_step, levels = rev(c("ACTIVATION", "CASE_REVIEW", "HEARING", "ASSIGNMENT", "DECISION", "OUTCODING")))) %>%
+  filter(!is.na(next_step)) %>%
+  arrange(next_step)
+
+ggplot(ordered_bva_backlogs, aes(x = obs_date, y = n, fill = next_step)) +
+  ggtitle("Combined BVA backlogs (estimated)") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  scale_y_continuous(position = "right") +
+  scale_fill_manual(values = rev(c("#C94F43", "#F98175", "#FBB369", "#8AB5D2", "#2679B2", "#BB82BC"))) +
+  geom_area() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.title = element_blank()
+  )
+
+ggplot(ordered_bva_backlogs[ordered_bva_backlogs$next_step %in% c("ASSIGNMENT", "DECISION"),], aes(x = obs_date, y = n, fill = next_step)) +
+  ggtitle("Decision backlogs (estimated)") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  scale_y_continuous(position = "right") +
+  scale_fill_manual(values = rev(c("#8AB5D2", "#2679B2"))) +
+  geom_area() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.title = element_blank()
+  )
+
+ggplot(ordered_bva_backlogs[ordered_bva_backlogs$next_step %in% c("HEARING"),], aes(x = obs_date, y = n, fill = next_step)) +
+  ggtitle("Hearing backlog (estimated)") +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  scale_y_continuous(position = "right") +
+  scale_fill_manual(values = rev(c("#FBB369"))) +
+  geom_area() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.title = element_blank()
+  )
 
 
 

@@ -321,15 +321,15 @@ ggsave("impact_dispatch_usage.pdf", device = cairo_pdf, width = 5.5, height = 2,
 ###################
 
 users <- data.frame(
-  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01")),
-  n = c(6, 6, 9, 49, 97, 120, 115, 130)
+  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01")),
+  n = c(6, 6, 9, 49, 97, 120, 115, 130, 123, 126)
 )
 
 users$last <- c(rep(FALSE, nrow(users) - 1), TRUE)
 
 folders <- data.frame(
-  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01")),
-  n = c(253, 60, 24, 348, 1726, 2795, 3519, 4204)
+  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01")),
+  n = c(253, 60, 24, 348, 1726, 2795, 3519, 4204, 4315, 4471)
 )
 
 folders$last <- c(rep(FALSE, nrow(folders) - 1), TRUE)

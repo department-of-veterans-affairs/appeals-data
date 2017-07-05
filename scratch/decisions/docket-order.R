@@ -213,8 +213,8 @@ inner join (
 ) on BFKEY = DEFOLDER
 
 where BFAC in ('1', '3')
-  and DEASSIGN >= date '2016-05-01'
-  and DEASSIGN < date '2017-05-31'
+  and DEASSIGN >= date '2014-06-01'
+  and DEASSIGN < date '2017-06-01'
 ") %>% mutate(
   AOD = as.logical(AOD),
   HEARING = as.logical(HEARING),
@@ -261,7 +261,6 @@ dva_theme <- theme_light() +
   theme(
     panel.border = element_blank(),
     text = element_text(family = "Source Sans Pro"),
-    axis.ticks = element_blank(),
     axis.title = element_blank(),
     strip.background = element_blank(),
     strip.text = element_text(color = "black")
