@@ -1,0 +1,258 @@
+issues <- query("
+select
+  FOLDER.TITRNUM,
+  FOLDER.TICKNUM,
+  FOLDER.TIAGOR,
+  FOLDER.TIASBT,
+  FOLDER.TIGWUI,
+  FOLDER.TIHEPC,
+  FOLDER.TIAIDS,
+  FOLDER.TIMGAS,
+  FOLDER.TIPTSD,
+  FOLDER.TIRADB,
+  FOLDER.TIRADN,
+  FOLDER.TISARC,
+  FOLDER.TISEXH,
+  FOLDER.TITOBA,
+  FOLDER.TINOSC,
+  FOLDER.TI38US,
+  FOLDER.TINNME,
+  FOLDER.TINWGR,
+  FOLDER.TIPRES,
+  FOLDER.TITRTM,
+  FOLDER.TINOOT,
+  FOLDER.TISUBJ2,
+  FOLDER.TISUBJ1,
+  FOLDER.TISNL,
+  FOLDER.TIVBMS,
+  FOLDER.TICLCW,
+  CORRES.SDOB,
+  CORRES.SGENDER,
+  CORRES.SADDRZIP,
+  CORRES.SHOMELESS,
+  CORRES.STERMILL,
+  CORRES.SFINHARD,
+  CORRES.SADVAGE,
+  CORRES.SMOH,
+  CORRES.SVSI,
+  CORRES.SPOW,
+  CORRES.SALS,
+  CORRES.SPGWV,
+  CORRES.SINCAR,
+  CORRTYPS.CTYP_PS0,
+  CORRTYPS.CTYP_PS1,
+  CORRTYPS.CTYP_PS2,
+  CORRTYPS.CTYP_PS3,
+  CORRTYPS.CTYP_PS4,
+  CORRTYPS.CTYP_PS5,
+  CORRTYPS.CTYP_PS6,
+  CORRTYPS.CTYP_PS7,
+  CORRTYPS.CTYP_PS8,
+  CORRTYPS.CTYP_PS9,
+  BRIEFF.BFDNOD,
+  BRIEFF.BFDSOC,
+  BRIEFF.BFD19,
+  BRIEFF.BF41STAT,
+  BRIEFF.BFDCERTOOL,
+  BRIEFF.BFSSOC1,
+  BRIEFF.BFSSOC2,
+  BRIEFF.BFSSOC3,
+  BRIEFF.BFSSOC4,
+  BRIEFF.BFSSOC5,
+  BRIEFF.BFDDEC,
+  BRIEFF.BFDPDCN,
+  BRIEFF.BFAC,
+  BRIEFF.BFSO,
+  BRIEFF.BFHR,
+  BRIEFF.BFHA,
+  BRIEFF.BFREGOFF,
+  BRIEFF.BFDRODEC,
+  BRIEFF.BFOC,
+  BRIEFF.BFMEMID,
+  (case when (nvl(AOD_DIARIES.CNT, 0) + nvl(AOD_HEARINGS.CNT, 0)) > 0 then 1 else 0 end) AOD,
+  ISSUES.ISSSEQ,
+  ISSUES.ISSDC,
+  ISSUES.ISSDCLS,
+  ISSUES.ISSDESC,
+  ISSUES.ISSPROG,
+  ISSUES.ISSCODE,
+  ISSUES.ISSLEV1,
+  ISSUES.ISSLEV2,
+  ISSUES.ISSLEV3,
+  ISSREF.PROG_DESC ISSPROG_LABEL,
+  ISSREF.ISS_DESC ISSCODE_LABEL,
+  case when ISSUES.ISSLEV1 is not null then
+    case when ISSREF.LEV1_CODE = '##' then
+      VFTYPES.FTDESC else ISSREF.LEV1_DESC
+    end
+  end ISSLEV1_LABEL,
+  case when ISSUES.ISSLEV2 is not null then
+    case when ISSREF.LEV2_CODE = '##' then
+      VFTYPES.FTDESC else ISSREF.LEV2_DESC
+    end
+  end ISSLEV2_LABEL,
+  case when ISSUES.ISSLEV3 is not null then
+    case when ISSREF.LEV3_CODE = '##' then
+      VFTYPES.FTDESC else ISSREF.LEV3_DESC
+    end
+  end ISSLEV3_LABEL,
+  HEARSCHED.HEARING_CNT,
+  HEARSCHED.HEARING_C_CNT,
+  HEARSCHED.HEARING_T_CNT,
+  HEARSCHED.HEARING_V_CNT,
+  DECASS.DEHOURS,
+  DECASS.DEATTY,
+  DECASS.DEICR,
+  DECASS.DEFCR,
+  DECASS.DEFDIFF,
+  DECASS.DEOQ,
+  U_DECASS.SUM_DEHOURS,
+  U_DECASS.COUNT_DEATTYS,
+  U_DECASS.COUNT_DECASS,
+  RMDREA.RMDVAL,
+  RMDREA.RMDVAL_LABEL,
+  OTHDOCS.CLMFLD,
+  OTHDOCS.OTHMED,
+  OTHDOCS.SDRENV,
+  OTHDOCS.EFOLDER,
+  COVA.CVDOCKET,
+  COVA.CVDDEC,
+  COVA.CVJOINT,
+  COVA.CVDISP,
+  COVA.CVBM1,
+  COVA.CVBM2,
+  COVA.CVBM3,
+  COVA.CVBM3PLUS,
+  COVA.CVJUDGE,
+  COVA.CVOGCATTY,
+  COVA.CVOGCDEP,
+  COVA.CVRR,
+  COVA.CVRRTEXT
+
+from ISSUES
+
+inner join BRIEFF
+  on ISSUES.ISSKEY = BRIEFF.BFKEY
+
+inner join CORRES                     -- There are 2 duplicate CORRES.STAFKEYs
+  on BRIEFF.BFCORKEY = CORRES.STAFKEY
+
+inner join FOLDER
+  on ISSUES.ISSKEY = FOLDER.TICKNUM
+
+left join OTHDOCS                     -- There are 185 duplicate OTHDOCS.TICKNUMs
+  on BRIEFF.BFKEY = OTHDOCS.TICKNUM
+
+left join (
+    select
+      CTYPKEY,
+      sum(case when CTYPVAL = 'PS0' then 1 else 0 end) CTYP_PS0,
+      sum(case when CTYPVAL = 'PS1' then 1 else 0 end) CTYP_PS1,
+      sum(case when CTYPVAL = 'PS2' then 1 else 0 end) CTYP_PS2,
+      sum(case when CTYPVAL = 'PS3' then 1 else 0 end) CTYP_PS3,
+      sum(case when CTYPVAL = 'PS4' then 1 else 0 end) CTYP_PS4,
+      sum(case when CTYPVAL = 'PS5' then 1 else 0 end) CTYP_PS5,
+      sum(case when CTYPVAL = 'PS6' then 1 else 0 end) CTYP_PS6,
+      sum(case when CTYPVAL = 'PS7' then 1 else 0 end) CTYP_PS7,
+      sum(case when CTYPVAL = 'PS8' then 1 else 0 end) CTYP_PS8,
+      sum(case when CTYPVAL = 'PS9' then 1 else 0 end) CTYP_PS9
+    from CORRTYPS
+    group by CTYPKEY
+  ) CORRTYPS
+  on CORRES.STAFKEY = CORRTYPS.CTYPKEY
+
+inner join ISSREF
+  on ISSUES.ISSPROG = ISSREF.PROG_CODE
+  and ISSUES.ISSCODE = ISSREF.ISS_CODE
+  and (ISSUES.ISSLEV1 is null
+    or ISSREF.LEV1_CODE = '##'
+    or ISSUES.ISSLEV1 = ISSREF.LEV1_CODE)
+  and (ISSUES.ISSLEV2 is null
+    or ISSREF.LEV2_CODE = '##'
+    or ISSUES.ISSLEV2 = ISSREF.LEV2_CODE)
+  and (ISSUES.ISSLEV3 is null
+    or ISSREF.LEV3_CODE = '##'
+    or ISSUES.ISSLEV3 = ISSREF.LEV3_CODE)
+
+left join VFTYPES
+  on VFTYPES.FTTYPE = 'DG'
+  and ((ISSREF.LEV1_CODE = '##' and 'DG' || ISSUES.ISSLEV1 = VFTYPES.FTKEY)
+    or (ISSREF.LEV2_CODE = '##' and 'DG' || ISSUES.ISSLEV2 = VFTYPES.FTKEY)
+    or (ISSREF.LEV3_CODE = '##' and 'DG' || ISSUES.ISSLEV3 = VFTYPES.FTKEY))
+
+left join COVA
+  on ISSUES.ISSKEY = COVA.CVFOLDER
+    and ISSUES.ISSSEQ = COVA.CVISSSEQ
+
+left join (
+    select FOLDER_NR,
+      count(*) HEARING_CNT,
+      sum(case when HEARING_TYPE = 'C' then 1 else 0 end) HEARING_C_CNT,
+      sum(case when HEARING_TYPE = 'T' then 1 else 0 end) HEARING_T_CNT,
+      sum(case when HEARING_TYPE = 'V' then 1 else 0 end) HEARING_V_CNT
+    from HEARSCHED
+    where HEARING_DISP = 'H'
+      and HEARING_TYPE in ('C', 'T', 'V')
+    group by FOLDER_NR
+  ) HEARSCHED
+    on BRIEFF.BFKEY = HEARSCHED.FOLDER_NR
+
+left join (
+    select
+      DEFOLDER,
+      sum(DEHOURS) SUM_DEHOURS,
+      count(distinct(DEATTY)) COUNT_DEATTYS,
+      count(*) COUNT_DECASS,
+      max(DERECEIVE) MAX_DERECEIVE
+    from DECASS
+    group by DEFOLDER
+  ) U_DECASS
+  on ISSUES.ISSKEY = U_DECASS.DEFOLDER
+
+left join DECASS
+  on ISSUES.ISSKEY = DECASS.DEFOLDER
+    and DECASS.DERECEIVE = U_DECASS.MAX_DERECEIVE
+
+left join (
+    select
+      RMDKEY,
+      RMDISSSEQ,
+      listagg(RMDVAL, ',') within group (order by RMDVAL) RMDVAL,
+      listagg(FTDESC, ',') within group (order by RMDVAL) RMDVAL_LABEL
+    from RMDREA
+    inner join VFTYPES
+      on 'RR' || RMDREA.RMDVAL = VFTYPES.FTKEY
+    group by RMDKEY, RMDISSSEQ
+  ) RMDREA
+  on ISSUES.ISSKEY = RMDREA.RMDKEY
+    and ISSUES.ISSSEQ = RMDREA.RMDISSSEQ
+
+left join (
+    select TSKTKNM, count(*) CNT
+    from ASSIGN
+    where TSKACTCD in ('B', 'B1', 'B2')
+    group by TSKTKNM
+  ) AOD_DIARIES
+  on AOD_DIARIES.TSKTKNM = ISSUES.ISSKEY
+
+left join (
+    select FOLDER_NR, count(*) CNT
+    from HEARSCHED
+    where HEARING_TYPE in ('C', 'T', 'V')
+      and AOD in ('G', 'Y')
+    group by FOLDER_NR
+  ) AOD_HEARINGS
+  on AOD_HEARINGS.FOLDER_NR = ISSUES.ISSKEY
+
+where ISSUES.ISSDC is not null
+  and ISSUES.ISSDCLS > date '2017-07-01'
+") %>%
+  replace_na(list(HEARING_CNT = 0, HEARING_C_CNT = 0, HEARING_T_CNT = 0, HEARING_V_CNT = 0)) %>%
+  mutate(CVRR = sprintf("%-132s", CVRR)) %>%
+  separate(CVRR, into = paste0("CVRR_", toupper(letters[1:23])), sep = 1:22 + 26, remove = FALSE, fill = "right") %>%
+  separate(CVRR, into = paste0("CVRR13_", 1:80), sep = 1:79 + 52, remove = FALSE, extra = "drop") %>%
+  mutate(
+    CVRR_A = substr(CVRR_A, 27, 27),
+    CVRR_W = substr(CVRR_W, 1, 1),
+    CVRR13_1 = substr(CVRR13_1, 53, 53)
+  )

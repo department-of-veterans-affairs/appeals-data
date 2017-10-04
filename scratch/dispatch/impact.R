@@ -43,7 +43,7 @@ certifications <- dbGetQuery(con, "
   mutate(total = sum(n)) %>%
   ungroup() %>%
   filter(caseflow) %>%
-  mutate(rate = n / total, last = n() == row_number())
+  mutate(rate = n / total, last = n() == row_number(), date = as.Date(paste0(month, "-01")))
 
 certifications.paperless <- dbGetQuery(con, "
   select BF41STAT, BFDCERTOOL
@@ -59,29 +59,26 @@ certifications.paperless <- dbGetQuery(con, "
   mutate(total = sum(n)) %>%
   ungroup() %>%
   filter(caseflow) %>%
-  mutate(rate = n / total, last = n() == row_number())
+  mutate(rate = n / total, last = n() == row_number(), date = as.Date(paste0(month, "-01")))
 
-spaced_labs <- function (x, n) {
-  result <- sort(unique(x))
-  result[(seq_len(length(result)) - 1) %% n != 0] <- ""
-  return(result)
-}
+certifications <- certifications[1:(nrow(certifications) - 1),]
+certifications.paperless <- certifications.paperless[1:(nrow(certifications.paperless) - 1),]
 
-ggplot(certifications, aes(x = month, y = rate, group = 1, label = percent(rate))) +
-  scale_x_discrete(labels = spaced_labs(certifications$month, 3)) +
+ggplot(certifications, aes(x = date, y = rate, group = 1, label = percent(rate))) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b %Y") +
   scale_y_continuous(limits = c(0, 1), labels = percent) +
-  geom_line(color = "#0F2D52") +
-  geom_text(data = certifications[nrow(certifications),], nudge_y = 0.075, color = "#0F2D52", fontface = "bold") +
+  geom_line(color = "#0F2D52", size = 1) +
+  geom_text(data = certifications[nrow(certifications),], vjust = -.6, color = "#0F2D52", fontface = "bold", size = 3, family = "Source Sans Pro") +
   geom_point(data = certifications[nrow(certifications),], color = "#0F2D52") +
   dva_theme
 
 ggsave("all_certifications.pdf", device = cairo_pdf, width = 5.5, height = 2, units = "in")
 
-ggplot(certifications.paperless, aes(x = month, y = rate, group = 1, label = percent(rate))) +
-  scale_x_discrete(labels = spaced_labs(certifications.paperless$month, 3)) +
+ggplot(certifications.paperless, aes(x = date, y = rate, group = 1, label = percent(rate))) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b %Y") +
   scale_y_continuous(limits = c(0, 1), labels = percent) +
-  geom_line(color = "#0F2D52") +
-  geom_text(data = certifications.paperless[nrow(certifications.paperless),], nudge_y = 0.075, color = "#0F2D52", fontface = "bold") +
+  geom_line(color = "#0F2D52", size = 1) +
+  geom_text(data = certifications.paperless[nrow(certifications.paperless),], vjust = -.6, color = "#0F2D52", fontface = "bold", size = 3, family = "Source Sans Pro") +
   geom_point(data = certifications.paperless[nrow(certifications.paperless),], color = "#0F2D52") +
   dva_theme
 
@@ -91,7 +88,7 @@ advance <- query("select BFKEY, BF41STAT, BFDCERTOOL from BRIEFF where BFMPRO = 
 n_advance <- nrow(advance)
 n_cf_advance <- sum(!is.na(advance$BFDCERTOOL))
 
-mismatch_report <- read.csv('../caseflow-certification/reports/mismatch_2017-04-12.csv')
+mismatch_report <- read.csv('../caseflow-certification/reports/mismatch_2017-07-31.csv')
 
 n_mismatch <- nrow(mismatch_report)
 n_cf_mismatch <- sum(mismatch_report$CASEFLOW == 'Y')
@@ -100,8 +97,8 @@ mismatch_rate <- n_mismatch / n_advance
 cf_mismatch_rate <- n_cf_mismatch / n_cf_advance
 
 mismatches <- data.frame(
-  month = as.Date(c("2015-12-01","2016-10-01","2017-01-01","2017-04-01")),
-  n = c(0.406, 0.354, 0.282, 0.244)
+  month = as.Date(c("2015-12-01","2016-10-01","2017-01-01","2017-04-01","2017-07-01")),
+  n = c(0.406, 0.354, 0.282, 0.244, 0.191)
 )
 
 mismatch_target = .2
@@ -117,6 +114,41 @@ ggplot(mismatches, aes(x = month, y = n, label = percent(n))) +
 
 ggsave("impact_certification_mismatch.pdf", device = cairo_pdf, width = 5.5, height = 2, units = "in")
 
+
+activations <- query("
+  select BF41STAT, TIDRECV, (case when BFHR in ('1', '2') then 1 else 0 end) HEARING
+  from BRIEFF
+  inner join FOLDER on BFKEY = TICKNUM
+  where BFAC = '1'
+    and TIVBMS = 'Y'
+    and BF41STAT is not null
+    and TIDRECV >= date '2015-10-01'
+")
+
+activations.by_month <- activations %>%
+  transmute(
+    time_to_activation = as.numeric(as.Date(TIDRECV) - as.Date(BF41STAT)),
+    month = as.Date(paste0(substr(TIDRECV, 1, 7), "-01")),
+    hearing = as.logical(HEARING)
+  ) %>%
+  filter(time_to_activation >= 0) %>%
+  group_by(month, hearing) %>%
+  summarise(adp = mean(time_to_activation))
+
+activations.non_hearing <- subset(activations.by_month, hearing == FALSE)
+
+activation_target = 60
+
+ggplot(activations.non_hearing, aes(x = month, y = adp, label = paste(as.character(adp), "days"))) +
+  scale_x_date(date_breaks = "6 months", date_labels = "%b %Y") +
+  scale_y_continuous(limits = c(0, 400)) +
+  geom_text(data = data.frame(adp = activation_target, month = max(activations.non_hearing$month) + 60), color = "#9F2F3F", hjust = .55, vjust = -.33, size = 3, family = "Source Sans Pro", fontface = "bold") +
+  geom_hline(yintercept = activation_target, color = "#9F2F3F", linetype = "dashed", alpha = 0.5) +
+  geom_smooth(method = 'loess', span = 2, se = FALSE, color = "#0F2D52") +
+  geom_point(pch = 4, color = "#0F2D52") +
+  dva_theme
+
+ggsave("impact_certification_activation.pdf", device = cairo_pdf, width = 5.5, height = 2, units = "in")
 
 #####################
 # Caseflow Dispatch #
@@ -149,13 +181,13 @@ decisions <- query("
     and BFDC between '1' and '9'
     and ACT_ISSUES > 0
     and TIVBMS = 'Y'
-    and TIOCTIME >= date '2016-04-01' and TIOCTIME < date '2017-04-28'
+    and TIOCTIME >= date '2016-04-01' and TIOCTIME < date '2017-07-01'
 ")
 
 vets <- unique(decisions$BFCORLID)
 write.table(vets, "sensitive_data/recent_ids_for_claims.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
-claims <- read.csv("sensitive_data/apr_claims.csv", stringsAsFactors = FALSE)
+claims <- read.csv("sensitive_data/claims_17-06.csv", stringsAsFactors = FALSE) %>% unique()
 
 decisions %<>%
   group_by(BFCORLID, BFDDEC) %>%
@@ -202,6 +234,11 @@ decisions %<>%
 clean_decisions <- decisions %>%
   filter(!multi_decision) %>%
   replace_na(list(has_match = FALSE, has_precise_match = FALSE))
+
+# FOR ITERATIVELY FETCHING ADDITIONAL CLAIMS
+missing <- clean_decisions %>% filter(!has_match)
+missing_vets <- unique(missing$BFCORLID)
+write.table(missing_vets, "sensitive_data/recent_ids_for_claims.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
 by_month <- clean_decisions %>%
   mutate(
@@ -279,20 +316,23 @@ matched_data <- by_month %>%
 timing_targets = c(4)
 
 ggplot(timing_data, aes(x = month, y = value, color = key, label = paste(as.character(value), "days"))) +
+  scale_x_date(date_breaks = "3 month", date_labels = "%b %Y") +
   scale_y_continuous(limits = c(0, 30)) +
   scale_color_manual(values = c("#0F2D52", "#256FB2")) +
   geom_hline(yintercept = timing_targets, color = "#9F2F3F", linetype = "dashed", alpha = 0.5) +
   geom_text(data = data.frame(value = timing_targets, month = max(timing_data$month) + 30), color = "#9F2F3F", hjust = .3, vjust = -.33, size = 3, family = "Source Sans Pro", fontface = "bold") +
-  stat_smooth(method = 'loess', span = 2, se = FALSE) +
-  geom_point(pch = 4) +
+  # geom_line(method = 'loess', span = 2, se = FALSE) +
+  # geom_point(pch = 4) +
+  geom_line(size = 1) +
   guides(color = guide_legend(title = '')) +
   dva_theme
 
-ggsave("impact_dispatch_timing.pdf", device = cairo_pdf, width = 5.5, height = 2.5, units = "in")
+ggsave("impact_dispatch_timing.pdf", device = cairo_pdf, width = 5.5, height = 2.3, units = "in")
 
 matched_targets = c(.85, .95)
 
 ggplot(matched_data, aes(x = month, y = value, color = key, label = percent(value))) +
+  scale_x_date(date_breaks = "3 month", date_labels = "%b %Y") +
   scale_y_continuous(limits = c(0.5, 1), labels = percent) +
   scale_color_manual(values = c("#256FB2", "#0F2D52")) +
   geom_hline(yintercept = matched_targets, color = "#9F2F3F", linetype = "dashed", alpha = 0.5) +
@@ -303,7 +343,7 @@ ggplot(matched_data, aes(x = month, y = value, color = key, label = percent(valu
   guides(color = guide_legend(title = '')) +
   dva_theme
 
-ggsave("impact_dispatch_matched.pdf", device = cairo_pdf, width = 5.5, height = 2.5, units = "in")
+ggsave("impact_dispatch_matched.pdf", device = cairo_pdf, width = 5.5, height = 2.3, units = "in")
 
 ggplot(usage_data, aes(x = month, y = rate, group = 1, label = percent(rate))) +
   scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
@@ -321,46 +361,64 @@ ggsave("impact_dispatch_usage.pdf", device = cairo_pdf, width = 5.5, height = 2,
 ###################
 
 users <- data.frame(
-  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01")),
-  n = c(6, 6, 9, 49, 97, 120, 115, 130, 123, 126)
+  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01"), as.Date("2017-06-01"), as.Date("2017-07-01"), as.Date("2017-08-01")),
+  n = c(6, 6, 9, 49, 97, 120, 115, 130, 123, 126, 132, 128, 144)
 )
 
 users$last <- c(rep(FALSE, nrow(users) - 1), TRUE)
 
 folders <- data.frame(
-  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01")),
-  n = c(253, 60, 24, 348, 1726, 2795, 3519, 4204, 4315, 4471)
+  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01"), as.Date("2017-06-01"), as.Date("2017-07-01"), as.Date("2017-08-01")),
+  n = c(253, 60, 24, 348, 1726, 2795, 3519, 4204, 4315, 4471, 4902, 4574, 5185)
 )
 
 folders$last <- c(rep(FALSE, nrow(folders) - 1), TRUE)
 
 documents <- data.frame(
-  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01")),
-  n = c(125325, 17229, 10224, 76266, 411735, 534069, 672929, 775061, 802036, 853097)
+  month = c(as.Date("2016-08-01"), as.Date("2016-09-01"), as.Date("2016-10-01"), as.Date("2016-11-01"), as.Date("2016-12-01"), as.Date("2017-01-01"), as.Date("2017-02-01"), as.Date("2017-03-01"), as.Date("2017-04-01"), as.Date("2017-05-01"), as.Date("2017-06-01"), as.Date("2017-07-01"), as.Date("2017-08-01")),
+  n = c(125325, 17229, 10224, 76266, 411735, 534069, 672929, 775061, 802036, 853097, 905771, 830900, 919289)
 )
 
 documents$last <- c(rep(FALSE, nrow(documents) - 1), TRUE)
 
 ggplot(users, aes(x = month, y = n, label = n)) +
   scale_x_date(date_breaks = "2 months", date_labels = "%b %Y") +
+  scale_y_continuous(limits = c(0, 150)) +
   geom_bar(fill = "#0F2D52", stat = "identity") +
+  geom_text(data = subset(users, last), vjust = -.6, size = 3, family = "Source Sans Pro", fontface = "bold") +
   dva_theme
 
 ggsave("efolder_users.pdf", device = cairo_pdf, width = 5.5, height = 2, units = "in")
 
 ggplot(folders, aes(x = month, y = n, label = n)) +
   scale_x_date(date_breaks = "2 months", date_labels = "%b %Y") +
-  scale_y_continuous(label=comma) +
+  scale_y_continuous(label=comma, limits = c(0, 6000)) +
   geom_bar(fill = "#0F2D52", stat = "identity") +
+  geom_text(data = subset(folders, last), vjust = -.6, size = 3, family = "Source Sans Pro", fontface = "bold") +
   dva_theme
 
 ggsave("efolder_folders.pdf", device = cairo_pdf, width = 5.5, height = 2, units = "in")
 
 ggplot(documents, aes(x = month, y = n, label = comma(n))) +
   scale_x_date(date_breaks = "2 months", date_labels = "%b %Y") +
-  scale_y_continuous(label=comma) +
+  scale_y_continuous(label=comma, limits = c(0, 1e6)) +
   geom_bar(fill = "#0F2D52", stat = "identity") +
+  geom_text(data = subset(documents, last), vjust = -.6, size = 3, family = "Source Sans Pro", fontface = "bold") +
   dva_theme
 
 ggsave("efolder_documents.pdf", device = cairo_pdf, width = 5.5, height = 2, units = "in")
 
+###################
+# Caseflow Reader #
+###################
+
+decisions <- query("select BFKEY, BFDDEC from BRIEFF where BFDC between '1' and '9' and BFDDEC >= date '2017-07-01'")
+views <- cfquery("select distinct(VACOLS_ID) from APPEAL_VIEWS join APPEALS on APPEAL_ID = APPEALS.ID")
+
+by_month <- views %>%
+  mutate(caseflow = TRUE) %>%
+  right_join(decisions, by = c("vacols_id" = "BFKEY")) %>%
+  replace_na(list(caseflow = FALSE)) %>%
+  mutate(month = as.Date(paste0(substr(BFDDEC, 1, 7), "-01"))) %>%
+  group_by(month) %>%
+  summarise(percent_caseflow = sum(caseflow) / n())

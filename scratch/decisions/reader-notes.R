@@ -31,6 +31,8 @@ by_document <- notes %>%
   tally() %>%
   replace_na(list(category_procedural = FALSE, category_medical = FALSE, category_other = FALSE))
 
+mean(by_document$n)
+
 procedural_documents <- by_document %>%
   filter(category_procedural)
 

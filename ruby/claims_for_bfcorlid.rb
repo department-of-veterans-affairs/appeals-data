@@ -17,6 +17,15 @@ bgs = BGS::Services.new(
 )
 
 ep_codes = %w(
+  070BVAGR
+  070BVAGRARC
+  070BVAGRPMC
+  070RMND
+  070RMNDARC
+  070RMNDPMC
+  070RMNDBVAG
+  070RMBVAGARC
+  070RMBVAGPMC
   170APPACT
   170APPACTPMC
   170PGAMC
@@ -31,6 +40,11 @@ ep_codes = %w(
   400CORRCPMC
   930RC
   930RCPMC
+  930AC
+  930ACPMC
+  930APCBVA
+  930APCBVAARC
+  930APCBVAPMC
 )
 
 col_names = %w(
@@ -61,7 +75,7 @@ col_names = %w(
 CSV.open('claims.csv', 'w') do |csv|
   csv << col_names
 
-  Parallel.each(ARGF, in_threads: 16, progress: 'Loading cases') do |bfcorlid|
+  Parallel.each(ARGF, in_threads: 4, progress: 'Loading cases') do |bfcorlid|
     bfcorlid.strip!
     vbms_id = bfcorlid[0...-1].rjust(8, '0')
     begin
