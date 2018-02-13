@@ -11,9 +11,9 @@ bgs = BGS::Services.new(
   client_station_id: '283',
   client_username: 'CSFLOW',
   application: 'CASEFLOW',
-  ssl_cert_file: ENV['BGS_CERT'],
-  ssl_cert_key_file: ENV['BGS_KEY'],
-  ssl_ca_cert: ENV['BGS_CA_CERT']
+  ssl_cert_file: ENV['BGS_CERT_LOCATION'],
+  ssl_cert_key_file: ENV['BGS_KEY_LOCATION'],
+  ssl_ca_cert: ENV['BGS_CA_CERT_LOCATION']
 )
 
 ep_codes = %w(

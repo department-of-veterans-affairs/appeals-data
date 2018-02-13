@@ -272,7 +272,7 @@ where BFMPRO in ('ADV', 'ACT', 'REM')
 
 
 
-by_month <- data.frame(month = seq(as_date("2013-09-01"), as_date("2017-09-01"), "1 month"))
+by_month <- data.frame(month = seq(as_date("2013-09-01"), as_date("2017-10-01"), "1 month"))
 
 docket_date_cases <- query("
 select LOCDOUT, LOCDIN, BFD19
@@ -289,7 +289,7 @@ by_month$docket_date <- as_date(apply(by_month, 1, function(x) {
       is.na(LOCDIN) | LOCDIN >= x["month"]
     ) %>%
     arrange(BFD19)
-  return(as_date(.docket$BFD19[3000]))
+  return(as_date(.docket$BFD19[4000]))
 }))
 
 docket_margin_cases <- query("
@@ -573,7 +573,7 @@ where BFAC in ('1', '3')
 
 predictions <- data.frame()
 
-for(i in 15:nrow(by_month)) {
+for(i in 1:nrow(by_month)) {
   .month <- by_month$month[i]
   .docket_date <- by_month$docket_date[i]
   .docket_margin <- by_month$docket_margin[i]
@@ -588,7 +588,7 @@ for(i in 15:nrow(by_month)) {
   .remand_steady_state <- .remand_rate * .mean_remand_time
 
   .predictions <- data.frame(
-      form9_date = seq(as_date("2010-09-01"), as_date("2017-09-01"), "1 month"),
+      form9_date = seq(as_date("2010-09-01"), as_date("2017-10-01"), "1 month"),
       prediction_date = .month,
       ahead_on_docket_cnt = NA,
       orig_ahead_on_docket_cnt = NA,
