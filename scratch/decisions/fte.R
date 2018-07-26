@@ -77,16 +77,17 @@ productivity <- months %>%
   mutate(
     decisions_per_atty = n / fte,
     adj_decisions_per_atty = n / (fte - probation),
-    needed = 100000 / 12 / (fte - probation)
+    needed = 97907 / 12 / (fte - probation)
   )
 
-productivity_target = 12.25
+productivity_target = 11.5
 
 ggplot(productivity, aes(x = month, y = adj_decisions_per_atty, label = paste(as.character(adj_decisions_per_atty), "decisions"))) +
   scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
   scale_y_continuous(limits = c(0, 15)) +
-  geom_text(data = data.frame(adj_decisions_per_atty = productivity_target, month = max(productivity$month)), color = "#9F2F3F", hjust = .75, vjust = -.5, size = 3, family = "Source Sans Pro", fontface = "bold") +
-  geom_hline(yintercept = productivity_target, color = "#9F2F3F", linetype = "dashed", alpha = 0.5) +
+  geom_line(aes(y = needed), color = "#9F2F3F", linetype = "dashed", alpha = 0.5) +
+  geom_text(data = data.frame(adj_decisions_per_atty = productivity_target, month = max(productivity$month)), color = "#9F2F3F", hjust = .75, vjust = -1, size = 3, family = "Source Sans Pro", fontface = "bold") +
+  # geom_hline(yintercept = productivity_target, color = "#9F2F3F", linetype = "dashed", alpha = 0.5) +
   geom_point(pch = 4, color = "#0F2D52") +
   geom_smooth(method = 'loess', span = 0.5, se = FALSE, color = "#0F2D52") +
   # geom_line(color = "#0F2D52") +

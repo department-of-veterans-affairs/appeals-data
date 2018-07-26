@@ -21,7 +21,7 @@ from BRIEFF
 where BFAC in ('1', '3')
   and BFDC between '1' and '9'
   and BFDDEC >= date '2004-10-01'
-  and BFDDEC < date '2017-07-01'
+  and BFDDEC < date '2018-06-01'
 ") %>% mutate(
   AOD = as.logical(AOD),
   post_rem = BFAC == '3',
@@ -57,7 +57,28 @@ dva_theme <- theme_light() +
 
 ggplot(decisions.by_month, aes(x = month, y = cnt / total, color = type)) +
   geom_point(pch = 4) +
-  geom_smooth(method = "loess", span = 0.5, se = FALSE) +
+  geom_smooth(method = "loess", span = 0.25, se = FALSE) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  scale_y_continuous(labels = percent) +
+  scale_color_manual(values = rev(c("#0F2D52", "#256FB2", "#9F2F3F"))) +
+  dva_theme
+
+aod.by_month <- decisions %>%
+  mutate(
+    month = as.Date(paste0(substr(BFDDEC, 1, 7), "-01"))
+  ) %>%
+  group_by(month) %>%
+  summarise(
+    aod = sum(AOD),
+    nonaod = n() - sum(AOD),
+    total = n()
+  ) %>%
+  gather(type, cnt, -month, -total) %>%
+  mutate(type = factor(type, levels = rev(c('nonaod', 'aod')), ordered = TRUE))
+
+ggplot(aod.by_month, aes(x = month, y = cnt / total, color = type)) +
+  geom_point(pch = 4) +
+  geom_smooth(method = "loess", span = 0.25, se = FALSE) +
   scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
   scale_y_continuous(labels = percent) +
   scale_color_manual(values = rev(c("#0F2D52", "#256FB2", "#9F2F3F"))) +

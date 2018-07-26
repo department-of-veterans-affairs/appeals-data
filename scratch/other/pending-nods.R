@@ -33,11 +33,11 @@ nod_pending <- query("select BFDNOD, BFREGOFF from BRIEFF where BFDNOD is not nu
     yrs_pending.max = max(days_pending) / 365
   )
 
-socs_per_yr <- query("select count(*) FY16_SOCS, BFREGOFF from BRIEFF where BFDSOC >= date '2015-10-01' and BFDSOC < date '2016-10-01' and BFAC = '1' group by BFREGOFF")
+socs_per_yr <- query("select count(*) FY17_SOCS, BFREGOFF from BRIEFF where BFDSOC >= date '2016-10-01' and BFDSOC < date '2017-10-01' and BFAC = '1' group by BFREGOFF")
 
 nod_pending %<>%
   left_join(socs_per_yr, by = c("BFREGOFF")) %>%
-  mutate(backlog_ratio = total / FY16_SOCS)
+  mutate(backlog_ratio = total / FY17_SOCS)
 
 ros <- read.csv("data/ro.csv", stringsAsFactors = FALSE)
 
@@ -49,7 +49,7 @@ nod_pending %>%
     RO = BFREGOFF,
     Name,
     Pending_NODs = total,
-    FY16_SOCs = FY16_SOCS,
+    FY17_SOCs = FY17_SOCS,
     Backlog_Ratio = backlog_ratio,
     Age_Median = yrs_pending.50,
     Age_75th_Percentile = yrs_pending.75,

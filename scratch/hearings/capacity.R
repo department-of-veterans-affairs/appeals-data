@@ -27,7 +27,8 @@ adv_hearings <- query("
 select BFD19,
   HEARING_DATE,
   TIDRECV,
-  BFDDEC
+  BFDDEC,
+  BFDC
 from BRIEFF
 inner join FOLDER on BFKEY = TICKNUM
 left join (
@@ -51,7 +52,8 @@ where BFAC = '1'
 ") %>%
   transmute(
     enter = as_date(BFD19),
-    exit = as_date(pmin(HEARING_DATE, TIDRECV, BFDDEC, na.rm = TRUE))
+    exit = as_date(pmin(HEARING_DATE, TIDRECV, BFDDEC, na.rm = TRUE)),
+    BFDC
   ) %>%
   filter(is.na(exit) | enter <= exit)
 
@@ -79,7 +81,7 @@ where BFDC in ('1', '3')
 
 all_hearings <- rbind(adv_hearings, rem_hearings)
 
-historical_backlog <- data.frame(date = seq(as_date("2007-10-01"), as_date("2017-10-01"), by = "week"))
+historical_backlog <- data.frame(date = seq(as_date("2007-10-01"), as_date("2018-05-16"), by = "week"))
 historical_backlog$n <- sapply(historical_backlog$date, function(x) sum(all_hearings$enter < x & (is.na(all_hearings$exit) | all_hearings$exit >= x)))
 
 ggplot(historical_backlog, aes(x = date, y = n)) +
